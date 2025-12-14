@@ -1,25 +1,21 @@
-name: Rust + Debian Package
+name: Rust + Debian Package (Cross-compile)
 
 on:
   push:
     tags:
-      - 'v*'  # 只有 push tag 才触发
+      - 'v*'
   workflow_dispatch:
-    inputs:
-      arch:
-        description: 'Target architecture'
-        required: true
-        default: 'amd64'
 
 env:
   CARGO_TERM_COLOR: always
-  TARGET_DIR: target/release
   DEB_DIR: package/deb
 
 jobs:
   build-deb:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        arch: [amd64, arm64, armv7]
     steps:
     - uses: actions/checkout@v4
 
@@ -32,13 +28,28 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq
+        sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq protobuf-compiler
+
+    - name: Install cross toolchains
+      run: |
+        case "${{ matrix.arch }}" in
+          amd64) TARGET=x86_64-unknown-linux-gnu ;;
+          arm64) TARGET=aarch64-unknown-linux-gnu ;;
+          armv7) TARGET=armv7-unknown-linux-gnueabihf ;;
+        esac
+        rustup target add $TARGET
+        echo "TARGET=$TARGET" >> $GITHUB_ENV
 
     - name: Build Rust project
-      run: cargo build --release
+      run: |
+        cargo build --release --target $TARGET
 
     - name: Run tests
-      run: cargo test --verbose
+      run: |
+        # 测试默认本机架构即可，交叉编译架构无法直接运行
+        if [ "${{ matrix.arch }}" = "amd64" ]; then
+          cargo test --verbose
+        fi
 
     - name: Set package info
       id: pkg_info
@@ -46,13 +57,8 @@ jobs:
         PACKAGE_NAME=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')
         MAINTAINER=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].authors[0]')
         DESCRIPTION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].description // "No description"')
-        ARCH=${{ github.event.inputs.arch || 'amd64' }}
-        # 取触发的 Git tag 作为版本
-        if [ -n "${GITHUB_REF##refs/tags/}" ]; then
-          PACKAGE_VERSION="${GITHUB_REF##refs/tags/}"
-        else
-          PACKAGE_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
-        fi
+        ARCH=${{ matrix.arch }}
+        PACKAGE_VERSION="${GITHUB_REF##refs/tags/}"
         echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
         echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
         echo "MAINTAINER=$MAINTAINER" >> $GITHUB_ENV
@@ -62,7 +68,7 @@ jobs:
     - name: Prepare DEB structure
       run: |
         mkdir -p ${DEB_DIR}/usr/local/bin
-        cp ${TARGET_DIR}/relayfetch ${DEB_DIR}/usr/local/bin/
+        cp target/$TARGET/release/relayfetch ${DEB_DIR}/usr/local/bin/
         mkdir -p ${DEB_DIR}/var/lib/relayfetch
         mkdir -p ${DEB_DIR}/var/log/relayfetch
 
