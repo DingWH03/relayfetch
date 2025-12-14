@@ -11,6 +11,8 @@ env:
   DEB_DIR: package/deb
   CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
   CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
+  CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
   CC_aarch64_unknown_linux-gnu: aarch64-linux-gnu-gcc
   CXX_aarch64_unknown_linux-gnu: aarch64-linux-gnu-g++
 
