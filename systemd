@@ -1,0 +1,20 @@
+[Unit]
+Description=RelayFetch Mirror Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/relayfetch \
+  --config /etc/relayfetch/config.toml \
+  --files  /etc/relayfetch/files.toml
+
+Restart=always
+RestartSec=10
+
+User=relayfetch
+Group=relayfetch
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
