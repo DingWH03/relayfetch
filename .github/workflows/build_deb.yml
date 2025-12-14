@@ -63,8 +63,9 @@ jobs:
         PACKAGE_NAME=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')
         MAINTAINER=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].authors[0]')
         DESCRIPTION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].description // "No description"')
+        PACKAGE_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
         ARCH=${{ matrix.arch }}
-        PACKAGE_VERSION="${GITHUB_REF##refs/tags/}"
+        # PACKAGE_VERSION="${GITHUB_REF##refs/tags/}"
         echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
         echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
         echo "MAINTAINER=$MAINTAINER" >> $GITHUB_ENV
