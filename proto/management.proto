@@ -8,6 +8,17 @@ service Management {
   rpc TriggerSync(TriggerSyncRequest) returns (TriggerSyncResponse);
   rpc CleanUnusedFiles(CleanUnusedFilesRequest) returns (CleanUnusedFilesResponse);
   rpc Status(StatusRequest) returns (StatusResponse);
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+}
+
+message FileInfo {
+  string filename = 1;
+  string url = 2;
+  string last_modified = 3;
+}
+message ListFilesRequest {}
+message ListFilesResponse {
+  repeated FileInfo files = 1;
 }
 
 message PingRequest {}

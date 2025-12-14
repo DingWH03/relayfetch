@@ -10,6 +10,7 @@ mod meta;
 mod server;
 mod signal;
 mod sync;
+mod utils;
 
 #[cfg(feature = "management")]
 mod management;

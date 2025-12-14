@@ -17,10 +17,12 @@ use management_proto::{
     TriggerSyncRequest, TriggerSyncResponse,
     CleanUnusedFilesRequest, CleanUnusedFilesResponse,
     StatusRequest, StatusResponse,
+    ListFilesRequest, ListFilesResponse, FileInfo,
 };
 
 use crate::config::{ConfigCenter};
 use crate::sync;
+use crate::utils::{read_file_timestamp};
 
 #[derive(Clone)]
 pub struct ManagementService {
@@ -149,7 +151,58 @@ impl Management for ManagementService {
         last_ok_sync: last_ok_sync.unwrap_or("never".into()),
         last_sync_success: last_sync_success.unwrap_or(false),
     }))
-}
+    }
+
+    async fn list_files(
+        &self,
+        _request: Request<ListFilesRequest>,
+    ) -> Result<Response<ListFilesResponse>, Status> {
+        let cfg = self.cc.config().await;
+        let storage_dir = cfg.storage_dir.clone();
+        let base_url = cfg.url.trim_end_matches('/').to_string();
+
+        let mut result = Vec::new();
+
+        for entry in WalkDir::new(&storage_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path();
+
+            // 跳过 .meta 文件
+            if path.extension().and_then(|s| s.to_str()) == Some("meta") {
+                continue;
+            }
+
+            let filename = match path.file_name().and_then(|s| s.to_str()) {
+                Some(v) => v.to_string(),
+                None => continue,
+            };
+
+            // ---------- 读取时间 ----------
+            let last_modified = read_file_timestamp(&path)
+            .map(|t| t.to_rfc3339())
+            .unwrap_or_else(|| "unknown".into());
+
+        // ---------- 计算相对路径 URL ----------
+        let relative_path = path
+            .strip_prefix(&storage_dir)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace("\\", "/"); // Windows 兼容
+
+
+            result.push(FileInfo {
+                filename: filename.clone(),
+                url: format!("{}/{}", base_url, relative_path),
+                last_modified,
+            });
+        }
+
+        Ok(Response::new(ListFilesResponse { files: result }))
+    }
+
 }
 
 /// 启动 gRPC 管理服务
