@@ -14,14 +14,14 @@ mod sync;
 #[cfg(feature = "management")]
 mod management;
 
-#[cfg(feature = "management")]
-use management::register_management_routes;
+use env_logger::Env;
+use log::{error, info};
 
-use config::{Config, FilesConfig};
-
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc};
 use clap::Parser;
-use tokio::{net::TcpListener, sync::Semaphore, time::interval};
+use tokio::net::TcpListener;
+
+use crate::{config::ConfigCenter};
 
 #[derive(Parser)]
 #[command(name = "relayfetch")]
@@ -35,72 +35,105 @@ struct Args {
     files: PathBuf,
 }
 
+
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // CLI 参数
+    // 1️⃣ 初始化
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let args = Args::parse();
-
-    // 配置文件
-    let cfg: Config = toml::from_str(&std::fs::read_to_string(&args.config)?)?;
-    let files_cfg: FilesConfig = toml::from_str(&std::fs::read_to_string(&args.files)?)?;
-    std::fs::create_dir_all(&cfg.storage_dir)?;
-
-    let sync_lock = Arc::new(Semaphore::new(1));
-
-    // 周期同步任务
-    {
-        let cfg = cfg.clone();
-        let files = files_cfg.files.clone();
-        let lock = sync_lock.clone();
-        tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_secs(cfg.interval_secs));
-            ticker.tick().await;
-            loop {
-                ticker.tick().await;
-                let _permit = lock.acquire().await.unwrap();
-                if let Err(e) = sync::sync_once(&cfg, &files).await {
-                    eprintln!("[sync] error: {e:?}");
-                }
-            }
-        });
-    }
-
-    // 启动时同步一次
-    {
-        let _permit = sync_lock.acquire().await.unwrap();
-        sync::sync_once(&cfg, &files_cfg.files).await?;
-    }
-
-    // HTTP 服务
-    let storage_root = cfg.storage_dir.clone();
-
-    #[cfg(not(feature = "management"))]
-    let app = server::build_router(storage_root);
-
-    #[cfg(feature = "management")]
-    let app = {
-        let app = server::build_router(storage_root.clone());
-        let app = register_management_routes(app);
-        // 启动 gRPC 管理服务
-        let grpc_addr = "127.0.0.1:50051".parse().unwrap();
-        tokio::spawn(async move {
-            if let Err(e) = management::serve_grpc(grpc_addr).await {
-                eprintln!("Management gRPC error: {e:?}");
-            }
-        });
-        app
+    let runtime = config::RuntimeContext {
+        config_path: args.config.clone(),
+        files_path: args.files.clone(),
     };
+    let cc = Arc::new(ConfigCenter::new(runtime));
 
-    let listener = TcpListener::bind(&cfg.bind).await?;
-    println!("Download server listening on http://{}", cfg.bind);
+    // 2️⃣ 启动后台同步任务
+    spawn_periodic_sync(cc.clone());
 
-    // 优雅退出
+    // 3️⃣ Management 服务
+    #[cfg(feature = "management")]
+    spawn_management(cc.clone());
+
+    // 4️⃣ 构建 HTTP 服务
+    let storage_dir = { cc.config().await.storage_dir.clone() };
+    let app = server::build_router(storage_dir);
+
+    // 5️⃣ 启动 HTTP 服务
+    let bind = { cc.config().await.bind.clone() };
+    run_server(bind, app).await?;
+    Ok(())
+}
+
+
+
+
+/// 启动周期同步任务
+fn spawn_periodic_sync(cc: Arc<ConfigCenter>) {
+    tokio::spawn(async move {
+        let sync_lock = Arc::new(tokio::sync::Semaphore::new(1));
+
+        // 启动时立即同步一次
+        {
+            let _permit = sync_lock.acquire().await.unwrap();
+            let cfg_read = cc.config().await;
+            let files_read = cc.files().await;
+            if let Err(e) = sync::sync_once(&cfg_read, &files_read.files).await {
+                log::error!("[sync] error: {:?}", e);
+                cc.update_sync_status(false).await;
+            } else {
+                cc.update_sync_status(true).await;
+            }
+        }
+
+        // 使用 interval 循环
+        loop {
+            let interval_secs = {
+                let cfg_read = cc.config().await;
+                cfg_read.interval_secs
+            };
+
+            tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
+
+            let _permit = sync_lock.acquire().await.unwrap();
+            let cfg_read = cc.config().await;
+            let files_read = cc.files().await;
+
+            if let Err(e) = sync::sync_once(&cfg_read, &files_read.files).await {
+                log::error!("[sync] error: {:?}", e);
+                cc.update_sync_status(false).await;
+            } else {
+                cc.update_sync_status(true).await;
+            }
+        }
+    });
+}
+
+
+
+#[cfg(feature = "management")]
+fn spawn_management(cc: Arc<ConfigCenter>) {
+    tokio::spawn(async move {
+        use management::serve_grpc;
+        let grpc_addr = cc.config().await.admin.parse().unwrap();
+        if let Err(e) = serve_grpc(grpc_addr, cc).await {
+            error!("Management gRPC error: {e:?}");
+        }
+    });
+}
+
+
+/// 启动 HTTP 服务并优雅退出
+async fn run_server(bind: String, app: axum::Router) -> anyhow::Result<()> {
+    let listener = TcpListener::bind(&bind).await?;
+    info!("Download server listening on http://{}", bind);
+
     tokio::select! {
         res = axum::serve(listener, app) => {
-            if let Err(e) = res { eprintln!("HTTP server error: {e:?}"); }
+            if let Err(e) = res { error!("HTTP server error: {e:?}"); }
         }
         _ = signal::shutdown_signal() => {
-            println!("Shutdown signal received, exiting...");
+            info!("Shutdown signal received, exiting...");
         }
     }
 

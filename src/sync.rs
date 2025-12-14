@@ -1,11 +1,19 @@
 use crate::config::Config;
 use crate::meta::{Meta, load_meta, save_meta, ensure_parent_dir};
+use log::info;
 use reqwest::header;
 use std::collections::HashMap;
 use std::time::Duration;
 
+#[derive(Clone)]
+pub struct SyncStatus {
+    pub last_sync: Option<std::time::SystemTime>,
+    pub last_ok_sync: Option<std::time::SystemTime>,
+    pub last_result: Option<bool>, // true = 成功，false = 失败
+}
+
 pub async fn sync_once(cfg: &Config, files: &HashMap<String, String>) -> anyhow::Result<()> {
-    println!("[sync] start");
+    info!("[sync] start");
 
     let mut builder = reqwest::Client::builder()
         .http1_only()
@@ -14,7 +22,7 @@ pub async fn sync_once(cfg: &Config, files: &HashMap<String, String>) -> anyhow:
 
     if let Some(proxy) = &cfg.proxy {
         builder = builder.proxy(reqwest::Proxy::all(proxy)?);
-        println!("[sync] use proxy {}", proxy);
+        info!("[sync] use proxy {}", proxy);
     }
 
     let client = builder.build()?;
@@ -33,10 +41,10 @@ pub async fn sync_once(cfg: &Config, files: &HashMap<String, String>) -> anyhow:
             req = req.header(header::IF_MODIFIED_SINCE, lm);
         }
 
-        println!("[sync] {} <- {}", file_path.display(), url);
+        info!("[sync] {} <- {}", file_path.display(), url);
         let resp = req.send().await?;
         if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
-            println!("[sync] not modified, skip");
+            info!("[sync] not modified, skip");
             continue;
         }
 
@@ -51,6 +59,6 @@ pub async fn sync_once(cfg: &Config, files: &HashMap<String, String>) -> anyhow:
         save_meta(&meta_path, &new_meta)?;
     }
 
-    println!("[sync] done");
+    info!("[sync] done");
     Ok(())
 }

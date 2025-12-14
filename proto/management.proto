@@ -4,10 +4,32 @@ package management;
 
 service Management {
   rpc Ping(PingRequest) returns (PingResponse);
+  rpc ReloadConfig(ReloadConfigRequest) returns (ReloadConfigResponse);
+  rpc TriggerSync(TriggerSyncRequest) returns (TriggerSyncResponse);
+  rpc CleanUnusedFiles(CleanUnusedFilesRequest) returns (CleanUnusedFilesResponse);
+  rpc Status(StatusRequest) returns (StatusResponse);
 }
 
 message PingRequest {}
+message PingResponse { string message = 1; }
 
-message PingResponse {
-  string message = 1;
+message ReloadConfigRequest {}
+message ReloadConfigResponse { string message = 1; }
+
+message TriggerSyncRequest {}
+message TriggerSyncResponse { string message = 1; }
+
+message CleanUnusedFilesRequest {}
+message CleanUnusedFilesResponse { repeated string removed = 1; }
+
+message StatusRequest {}
+message StatusResponse {
+  uint32 total_files = 1;
+  uint32 stored_files = 2;
+  string storage_dir = 3;
+  string config = 4;
+  string last_sync = 5;
+  string last_ok_sync = 6;
+  bool last_sync_success = 7;
 }
+
