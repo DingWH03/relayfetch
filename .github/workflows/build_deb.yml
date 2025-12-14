@@ -28,7 +28,7 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq protobuf-compiler
+        sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq protobuf-compiler gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
     - name: Install cross toolchains
       run: |
