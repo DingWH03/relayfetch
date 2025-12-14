@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   DEB_DIR: package/deb
+  CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+  CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
+  CC_aarch64_unknown_linux-gnu: aarch64-linux-gnu-gcc
+  CXX_aarch64_unknown_linux-gnu: aarch64-linux-gnu-g++
 
 jobs:
   build-deb:
