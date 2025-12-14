@@ -1,0 +1,84 @@
+name: Rust + Debian Package
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:  # 支持手动触发，可指定架构
+    inputs:
+      arch:
+        description: 'Target architecture'
+        required: true
+        default: 'amd64'
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET_DIR: target/release
+  DEB_DIR: package/deb
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install build dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq
+
+    - name: Build Rust project
+      run: cargo build --release
+
+    - name: Run tests
+      run: cargo test --verbose
+
+    - name: Read package info from Cargo.toml
+      id: cargo_info
+      run: |
+        PACKAGE_NAME=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')
+        PACKAGE_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+        MAINTAINER=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].authors[0]')
+        DESCRIPTION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].description // "No description"')
+        ARCH=${{ github.event.inputs.arch }}
+        echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
+        echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+        echo "MAINTAINER=$MAINTAINER" >> $GITHUB_ENV
+        echo "DESCRIPTION=$DESCRIPTION" >> $GITHUB_ENV
+        echo "ARCH=$ARCH" >> $GITHUB_ENV
+
+    - name: Prepare DEB structure
+      run: |
+        mkdir -p ${DEB_DIR}/usr/local/bin
+        cp ${TARGET_DIR}/relayfetch ${DEB_DIR}/usr/local/bin/
+        mkdir -p ${DEB_DIR}/var/lib/relayfetch
+        mkdir -p ${DEB_DIR}/var/log/relayfetch
+
+    - name: Set control file
+      run: |
+        echo "Package: ${PACKAGE_NAME}" > ${DEB_DIR}/DEBIAN/control
+        echo "Version: ${PACKAGE_VERSION}" >> ${DEB_DIR}/DEBIAN/control
+        echo "Section: utils" >> ${DEB_DIR}/DEBIAN/control
+        echo "Priority: optional" >> ${DEB_DIR}/DEBIAN/control
+        echo "Architecture: ${ARCH}" >> ${DEB_DIR}/DEBIAN/control
+        echo "Maintainer: ${MAINTAINER}" >> ${DEB_DIR}/DEBIAN/control
+        echo "Description: ${DESCRIPTION}" >> ${DEB_DIR}/DEBIAN/control
+
+    - name: Build DEB package
+      run: |
+        fakeroot dpkg-deb --build ${DEB_DIR} ${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCH}.deb
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: relayfetch-deb
+        path: ${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCH}.deb
