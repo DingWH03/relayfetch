@@ -101,9 +101,11 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload DEB to Release
+    - name: Set DEB file path
+      id: debfile
+      run: echo "debfile=${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCH}.deb" >> $GITHUB_OUTPUT
+
+    - name: Upload DEB
       uses: softprops/action-gh-release@v1
       with:
-        files: ${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCH}.deb
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        files: ${{ steps.debfile.outputs.debfile }}

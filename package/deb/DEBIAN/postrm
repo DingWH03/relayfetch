@@ -1,9 +1,17 @@
 #!/bin/sh
 set -e
 
+USER_NAME=relayfetch
+
 if [ "$1" = "purge" ]; then
-    rm -rf /var/lib/relayfetch
-    rm -rf /var/log/relayfetch
+    # 删除数据和日志目录
+    rm -rf /var/lib/$USER_NAME
+    rm -rf /var/log/$USER_NAME
+
+    # 删除用户及其 home 目录
+    if id "$USER_NAME" >/dev/null 2>&1; then
+        userdel -r $USER_NAME
+    fi
 fi
 
 exit 0
