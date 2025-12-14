@@ -1,0 +1,9 @@
+Package: relayfetch
+Version: 0.1.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.31), ca-certificates
+Maintainer: DingVero <dingvero@outlook.com>
+Description: RelayFetch file sync and HTTP server
+ A Rust-based tool to sync files and provide HTTP download.

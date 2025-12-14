@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "upgrade" ]; then
+    systemctl stop relayfetch.service || true
+    systemctl disable relayfetch.service || true
+fi
+
+exit 0

@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+# 创建系统用户和组（如果不存在）
+if ! id relayfetch >/dev/null 2>&1; then
+    adduser --system --no-create-home --group relayfetch
+fi
+
+# 创建存储目录和日志目录
+mkdir -p /var/lib/relayfetch /var/log/relayfetch
+chown -R relayfetch:relayfetch /var/lib/relayfetch /var/log/relayfetch
+
+# 重新加载 systemd 并启用服务
+systemctl daemon-reload
+systemctl enable relayfetch
+systemctl start relayfetch
+
+exit 0

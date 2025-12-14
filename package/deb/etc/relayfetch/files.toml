@@ -1,0 +1,6 @@
+[files]
+# key   = 本地相对路径（也是 HTTP 路径）
+# value = 下载 URL
+
+"rules/geosite.dat" = "https://github.com/v2rayA/dist-v2ray-rules-dat/raw/master/geosite.dat"
+"rules/geoip.dat"   = "https://github.com/v2rayA/dist-v2ray-rules-dat/raw/master/geoip.dat"

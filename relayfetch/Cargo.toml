@@ -1,0 +1,31 @@
+[package]
+name = "relayfetch"
+version = "0.1.0"
+edition = "2024"
+authors = ["DingVero<dingvero@outlook.com>"]
+description = "Relayfetch file sync & download server"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0.100"
+axum = "0.8.7"
+chrono = "0.4.42"
+clap = { version = "4.5.53", features = ["derive"] }
+env_logger = "0.11.8"
+log = "0.4.29"
+prost = "0.14.1"
+reqwest = { version = "0.12.25", features = ["rustls-tls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+tokio = { version = "1.48.0", features = ["full"] }
+toml = "0.9.8"
+tonic = "0.14.2"
+tonic-prost = "0.14.2"
+walkdir = "2.5.0"
+
+[features]
+default = ["management"]
+management = []
+
+[build-dependencies]
+tonic-prost-build = "0.14.2"
