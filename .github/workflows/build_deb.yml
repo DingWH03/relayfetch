@@ -91,7 +91,7 @@ jobs:
 
     - name: Build DEB package
       run: |
-        fakeroot dpkg-deb --build ${DEB_DIR} ${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCH}.deb
+        fakeroot dpkg-deb --build -Zxz ${DEB_DIR} ${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCH}.deb
 
     - name: Create or update GitHub Release
       uses: softprops/action-gh-release@v1
