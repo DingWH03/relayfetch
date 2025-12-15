@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        arch: [amd64, arm64, armv7, riscv64]
+        arch: [amd64, arm64, armv7h, riscv64]
     steps:
     - uses: actions/checkout@v4
 
@@ -47,7 +47,7 @@ jobs:
         case "${{ matrix.arch }}" in
           amd64) TARGET=x86_64-unknown-linux-gnu ;;
           arm64) TARGET=aarch64-unknown-linux-gnu ;;
-          armv7) TARGET=armv7-unknown-linux-gnueabihf ;;
+          armv7h) TARGET=armv7-unknown-linux-gnueabihf ;;
           riscv64) TARGET=riscv64gc-unknown-linux-gnu ;;
         esac
         rustup target add $TARGET
@@ -63,7 +63,7 @@ jobs:
         case "${{ matrix.arch }}" in
           amd64) ARCH=amd64 ;;
           arm64) ARCH=arm64 ;;
-          armv7) ARCH=armv7 ;;
+          armv7h) ARCH=armv7h ;;
           riscv64) ARCH=riscv64 ;;
         esac
         cp target/$TARGET/release/relayfetch release/relayfetch-${VERSION}-linux-${ARCH}
@@ -89,7 +89,7 @@ jobs:
 
     strategy:
       matrix:
-        arch: [x86_64, aarch64, armv7h, riscv64]
+        arch: [amd64, aarch64, armv7h, riscv64]
 
     steps:
       - uses: actions/checkout@v4
@@ -116,6 +116,8 @@ jobs:
             cd $GITHUB_WORKSPACE/package/arch
             ./generate.sh \"$VERSION\"
             cd dist-bin/${{ matrix.arch }}
+            # 在 makepkg 打包前禁用 gdb-index
+            export GDB_ADD_INDEX=0
             makepkg --noconfirm --clean
             cp *.pkg.tar.zst $GITHUB_WORKSPACE/release/
           "

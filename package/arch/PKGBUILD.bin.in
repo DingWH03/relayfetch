@@ -4,7 +4,7 @@ pkgname=relayfetch-bin
 pkgver=@VERSION@
 pkgrel=1
 pkgdesc="Prebuilt relayfetch file relay service for @ARCH@"
-arch=('@ARCH@')
+arch=('@RUST_ARCH@')
 url="https://github.com/dingwh03/relayfetch"
 license=('MIT')
 
@@ -15,7 +15,7 @@ conflicts=('relayfetch')
 install=relayfetch.install
 
 source=(
-  "relayfetch-@ARCH@::$url/releases/download/v$pkgver/relayfetch-linux-@ARCH@"
+  "relayfetch-@ARCH@::$url/releases/download/v$pkgver/relayfetch-$pkgver-linux-@ARCH@"
   "relayfetch.service"
   "config.toml"
   "files.toml"

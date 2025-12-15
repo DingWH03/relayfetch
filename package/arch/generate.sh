@@ -7,7 +7,9 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-ARCHS=("x86_64" "aarch64" "armv7" "riscv64")
+ARCHS=("amd64" "aarch64" "armv7h" "riscv64")
+declare -A ARCH_MAP
+ARCH_MAP=( ["amd64"]="x86_64" ["aarch64"]="aarch64" ["armv7h"]="armv7" ["riscv64"]="riscv64" )
 
 # -------------------------
 # 生成源码包
@@ -37,9 +39,10 @@ cp relayfetch.install \
 # -------------------------
 for arch in "${ARCHS[@]}"; do
   OUTDIR="dist-bin/$arch"
+  RUST_ARCH=${ARCH_MAP[$arch]}
   mkdir -p "$OUTDIR"
 
-  sed -e "s/@VERSION@/$VERSION/g" -e "s/@ARCH@/$arch/g" PKGBUILD.bin.in > "$OUTDIR/PKGBUILD"
+  sed -e "s/@VERSION@/$VERSION/g" -e "s/@ARCH@/$arch/g" -e "s/@RUST_ARCH@/$RUST_ARCH/g" PKGBUILD.bin.in > "$OUTDIR/PKGBUILD"
   cp relayfetch.install relayfetch.service config.toml files.toml "$OUTDIR/"
   (cd "$OUTDIR" && makepkg --printsrcinfo > .SRCINFO)
 done
