@@ -9,8 +9,10 @@ storage_dir = "data"
 # 不支持运行时重载该配置，重启服务生效
 bind = "0.0.0.0:8080"
 
+url = "localhost"
+
 # grpc后台地址
-admin = "0.0.0.0:25666"
+admin = "0.0.0.0:25667"
 
 # 可选代理（支持 http / socks5h）
 proxy = "http://127.0.0.1:20171"

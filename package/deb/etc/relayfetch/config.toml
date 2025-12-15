@@ -9,6 +9,8 @@ storage_dir = "/var/lib/relayfetch"
 # 不支持运行时重载该配置，重启服务生效
 bind = "0.0.0.0:25665"
 
+url = "localhost"
+
 # grpc后台地址
 admin = "0.0.0.0:25666"
 

@@ -159,7 +159,8 @@ impl Management for ManagementService {
     ) -> Result<Response<ListFilesResponse>, Status> {
         let cfg = self.cc.config().await;
         let storage_dir = cfg.storage_dir.clone();
-        let base_url = cfg.url.trim_end_matches('/').to_string();
+        let base_url = format!("http://{}:{}", cfg.url, cfg.bind_port);
+        // let base_url = cfg.url.trim_end_matches('/').to_string();
 
         let mut result = Vec::new();
 

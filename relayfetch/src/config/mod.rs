@@ -37,8 +37,10 @@ impl ConfigCenter {
                 )
             });
 
-        let cfg: Config = toml::from_str(&cfg_str)
+        let mut cfg: Config = toml::from_str(&cfg_str)
             .unwrap_or_else(|e| panic!("config.toml parse error: {e}"));
+
+        cfg.finalize();
 
         let files_cfg: FilesConfig = toml::from_str(&files_str)
             .unwrap_or_else(|e| panic!("files.toml parse error: {e}"));
@@ -68,7 +70,9 @@ impl ConfigCenter {
         let cfg_str = fs::read_to_string(&self.runtime.config_path)?;
 
         let files_str = fs::read_to_string(&self.runtime.files_path)?;
-        let new_cfg: Config = toml::from_str(&cfg_str)?;
+        let mut new_cfg: Config = toml::from_str(&cfg_str)?;
+
+        new_cfg.finalize();
 
         let new_files: FilesConfig = toml::from_str(&files_str)?;
 
@@ -117,12 +121,31 @@ pub struct Config {
     pub storage_dir: PathBuf,
     #[serde(default = "default_bind")]
     pub bind: String,
+    #[serde(skip)] // 不从 toml 解析，运行时生成
+    pub bind_addr: String,
+    #[serde(skip)]
+    pub bind_port: u16,
     #[serde(default = "default_admin")]
     pub admin: String,
     #[serde(default = "default_url")]
     pub url: String,
     pub proxy: Option<String>,
 }
+
+impl Config {
+    /// 加载完成后拆分 bind
+    pub fn finalize(&mut self) {
+        let mut parts = self.bind.split(':');
+        self.bind_addr = parts.next().unwrap_or("0.0.0.0").to_string();
+        self.bind_port = parts
+            .next()
+            .unwrap_or("8080")
+            .parse::<u16>()
+            .unwrap_or(8080);
+    }
+}
+
+
 
 fn default_interval() -> u64 {
     86400
@@ -139,7 +162,7 @@ fn default_admin() -> String {
 }
 
 fn default_url() -> String {
-    "http://localhost:8080/".into()
+    "localhost".into()
 
 }
 
