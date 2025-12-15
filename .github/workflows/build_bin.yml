@@ -104,7 +104,11 @@ jobs:
 
       - name: Generate dist-bin
         run: |
-          cd package/arch
+          # 创建用户
+          useradd -m build
+          # 切换用户
+          sudo -u build -i bash <<'EOF'
+          cd /github/workspace/package/arch
           ./generate.sh "$VERSION"
 
       - name: Build Arch package
