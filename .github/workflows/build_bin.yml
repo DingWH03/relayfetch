@@ -97,7 +97,7 @@ jobs:
       - name: Init pacman
         run: |
           pacman -Sy --noconfirm archlinux-keyring
-          pacman -S --noconfirm base-devel git curl
+          pacman -S --noconfirm base-devel git curl tree
 
       - name: Extract version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
@@ -108,14 +108,15 @@ jobs:
           useradd -m builduser
           chown -R builduser:builduser $GITHUB_WORKSPACE/package/arch
 
+          mkdir -p $GITHUB_WORKSPACE/release
+          chown builduser:builduser $GITHUB_WORKSPACE/release
+
           # 切换用户，并在正确路径下执行
           sudo -u builduser bash -c "
             cd $GITHUB_WORKSPACE/package/arch
             ./generate.sh \"$VERSION\"
             cd dist-bin/${{ matrix.arch }}
             makepkg --noconfirm --clean
-            mkdir -p $GITHUB_WORKSPACE/release
-            chown builduser:builduser $GITHUB_WORKSPACE/release
             cp *.pkg.tar.zst $GITHUB_WORKSPACE/release/
           "
 
