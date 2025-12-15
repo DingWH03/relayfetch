@@ -10,6 +10,18 @@ post_install() {
       relayfetch
   fi
 
+  echo "==> Creating directories"
+
+  # 创建工作目录 /var/lib/relayfetch，并赋予 relayfetch 用户权限
+  mkdir -p /var/lib/relayfetch
+  chown relayfetch:relayfetch /var/lib/relayfetch
+  chmod 750 /var/lib/relayfetch
+
+  # 设置配置文件权限
+  mkdir -p /etc/relayfetch
+  chown -R relayfetch:relayfetch /etc/relayfetch
+  chmod 750 /etc/relayfetch
+
   systemctl daemon-reload
 }
 
