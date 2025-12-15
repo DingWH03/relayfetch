@@ -102,21 +102,19 @@ jobs:
       - name: Extract version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
 
-      - name: Generate dist-bin
+      - name: Build Arch packages
         run: |
-          # 创建用户
-          useradd -m build
-          # 切换用户
-          sudo -u build -i bash <<'EOF'
-          cd /github/workspace/package/arch
-          ./generate.sh "$VERSION"
+          # 创建普通用户
+          useradd -m builduser
 
-      - name: Build Arch package
-        run: |
-          cd dist-bin/${{ matrix.arch }}
-          makepkg --noconfirm --clean
-          mkdir -p ../../release
-          cp *.pkg.tar.zst ../../release/
+          # 切换用户，并在正确路径下执行
+          sudo -u builduser bash -c "
+            cd $GITHUB_WORKSPACE/package/arch
+            ./generate.sh \"$VERSION\"
+            cd dist-bin/$ARCH
+            makepkg --noconfirm --clean
+            cp *.pkg.tar.zst $GITHUB_WORKSPACE/release/
+          "
 
       - name: Upload Arch packages to Release
         uses: softprops/action-gh-release@v2
