@@ -106,13 +106,16 @@ jobs:
         run: |
           # 创建普通用户
           useradd -m builduser
+          chown -R builduser:builduser $GITHUB_WORKSPACE/package/arch
 
           # 切换用户，并在正确路径下执行
           sudo -u builduser bash -c "
             cd $GITHUB_WORKSPACE/package/arch
             ./generate.sh \"$VERSION\"
-            cd dist-bin/$ARCH
+            cd dist-bin/${{ matrix.arch }}
             makepkg --noconfirm --clean
+            mkdir -p $GITHUB_WORKSPACE/release
+            chown builduser:builduser $GITHUB_WORKSPACE/release
             cp *.pkg.tar.zst $GITHUB_WORKSPACE/release/
           "
 
