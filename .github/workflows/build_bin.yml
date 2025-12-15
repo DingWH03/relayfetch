@@ -89,7 +89,8 @@ jobs:
 
     strategy:
       matrix:
-        arch: [amd64, aarch64, armv7h, riscv64]
+        arch: [amd64]
+        # arch: [amd64, aarch64, armv7h, riscv64]
 
     steps:
       - uses: actions/checkout@v4
