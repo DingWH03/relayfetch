@@ -84,6 +84,9 @@ jobs:
   build-arch-pkgs:
     needs: build-binaries
     runs-on: ubuntu-22.04
+    container:
+      image: archlinux:latest
+
     strategy:
       matrix:
         arch: [x86_64, aarch64, armv7h, riscv64]
@@ -91,11 +94,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Arch tools
+      - name: Init pacman
         run: |
-          sudo apt update
-          sudo apt install -y pacman-package-manager
-          sudo pacman -Sy --noconfirm base-devel curl
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -S --noconfirm base-devel git curl
 
       - name: Extract version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
