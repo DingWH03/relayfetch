@@ -1,0 +1,44 @@
+# Maintainer: DingVero <dingvero@outlook.com>
+
+pkgname=relayfetch
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Lightweight file relay and HTTP server written in Rust"
+arch=('x86_64' 'aarch64' 'riscv64')
+url="https://github.com/DingVero/relayfetch"
+license=('MIT')
+
+depends=('glibc' 'systemd')
+makedepends=('cargo' 'git')
+
+install=relayfetch.install  # 指向之前写好的 .install 文件
+
+source=(
+  "$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+  "relayfetch.service"
+  "config.toml"
+  "files.toml"
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  cargo build --release --locked
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  # 安装可执行文件
+  install -Dm755 target/release/relayfetch "$pkgdir/usr/bin/relayfetch"
+
+  # 安装系统用户配置
+  install -Dm644 config.toml "$pkgdir/etc/relayfetch/config.toml"
+  install -Dm644 files.toml  "$pkgdir/etc/relayfetch/files.toml"
+
+  # 安装 systemd service
+  install -Dm644 relayfetch.service "$pkgdir/etc/systemd/system/relayfetch.service"
+
+  # 安装 LICENSE
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

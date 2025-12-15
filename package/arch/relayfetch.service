@@ -1,0 +1,18 @@
+[Unit]
+Description=RelayFetch Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/relayfetch --config /etc/relayfetch/config.toml --files /etc/relayfetch/files.toml
+WorkingDirectory=/var/lib/relayfetch
+User=relayfetch
+Group=relayfetch
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=relayfetch
+
+[Install]
+WantedBy=multi-user.target

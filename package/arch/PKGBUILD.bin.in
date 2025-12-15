@@ -1,0 +1,43 @@
+pkgname=relayfetch-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Prebuilt relayfetch file relay service"
+arch=('x86_64' 'aarch64' 'riscv64')
+url="https://github.com/DingVero/relayfetch"
+license=('MIT')
+
+depends=('glibc' 'systemd')
+provides=('relayfetch')
+conflicts=('relayfetch')
+
+install=relayfetch.install
+
+source=(
+  "relayfetch-x86_64::$url/releases/download/v$pkgver/relayfetch-linux-x86_64"
+  "relayfetch-aarch64::$url/releases/download/v$pkgver/relayfetch-linux-aarch64"
+  "relayfetch-riscv64::$url/releases/download/v$pkgver/relayfetch-linux-riscv64"
+  "relayfetch.service"
+  "config.toml"
+  "files.toml"
+)
+
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  case "$CARCH" in
+    x86_64) bin=relayfetch-x86_64 ;;
+    aarch64) bin=relayfetch-aarch64 ;;
+    riscv64) bin=relayfetch-riscv64 ;;
+  esac
+
+  # binary
+  install -Dm755 "$bin" "$pkgdir/usr/bin/relayfetch"
+
+  # config
+  install -Dm644 config.toml "$pkgdir/etc/relayfetch/config.toml"
+  install -Dm644 files.toml  "$pkgdir/etc/relayfetch/files.toml"
+
+  # systemd service
+  install -Dm644 relayfetch.service \
+    "$pkgdir/etc/systemd/system/relayfetch.service"
+}

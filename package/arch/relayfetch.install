@@ -1,0 +1,46 @@
+post_install() {
+  echo "==> Creating relayfetch system user"
+
+  if ! getent passwd relayfetch >/dev/null; then
+    useradd \
+      --system \
+      --no-create-home \
+      --shell /usr/bin/nologin \
+      --user-group \
+      relayfetch
+  fi
+
+  systemctl daemon-reload
+}
+
+pre_remove() {
+  if systemctl list-unit-files | grep -q '^relayfetch\.service'; then
+    systemctl stop relayfetch.service || true
+    systemctl disable relayfetch.service || true
+  fi
+}
+
+post_remove() {
+  systemctl daemon-reload
+
+  cat <<EOF
+==> relayfetch has been removed.
+
+Configuration files under:
+  /etc/relayfetch
+
+Data directory (if any):
+  /var/lib/relayfetch
+
+were NOT removed automatically.
+
+To completely remove everything, run:
+  sudo rm -rf /etc/relayfetch /var/lib/relayfetch
+  sudo userdel relayfetch
+
+EOF
+
+echo "User 'relayfetch' was NOT removed."
+echo "To remove completely, run:"
+echo "  sudo userdel relayfetch"
+}

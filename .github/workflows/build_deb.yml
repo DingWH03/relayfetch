@@ -15,13 +15,17 @@ env:
   CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
   CC_aarch64_unknown_linux-gnu: aarch64-linux-gnu-gcc
   CXX_aarch64_unknown_linux-gnu: aarch64-linux-gnu-g++
+  CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
+  CC_riscv64gc_unknown_linux_gnu: riscv64-linux-gnu-gcc
+  CXX_riscv64gc_unknown_linux_gnu: riscv64-linux-gnu-g++
+
 
 jobs:
   build-deb:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        arch: [amd64, arm64, armv7]
+        arch: [amd64, arm64, armv7, riscv64]
     steps:
     - uses: actions/checkout@v4
 
@@ -34,7 +38,11 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq protobuf-compiler gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq protobuf-compiler \
+                            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+                            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+                            gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+
 
     - name: Install cross toolchains
       run: |
@@ -42,6 +50,7 @@ jobs:
           amd64) TARGET=x86_64-unknown-linux-gnu ;;
           arm64) TARGET=aarch64-unknown-linux-gnu ;;
           armv7) TARGET=armv7-unknown-linux-gnueabihf ;;
+          riscv64) TARGET=riscv64gc-unknown-linux-gnu ;;
         esac
         rustup target add $TARGET
         echo "TARGET=$TARGET" >> $GITHUB_ENV
