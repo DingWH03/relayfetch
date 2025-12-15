@@ -39,7 +39,6 @@ jobs:
         sudo apt update
         sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq protobuf-compiler \
                             gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
-                            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
                             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
                             gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
 
@@ -67,7 +66,7 @@ jobs:
           armv7) ARCH=armv7 ;;
           riscv64) ARCH=riscv64 ;;
         esac
-        cp $TARGET_DIR/relayfetch release/relayfetch-${VERSION}-linux-${ARCH}
+        cp target/$TARGET/release/relayfetch release/relayfetch-${VERSION}-linux-${ARCH}
 
     - name: Create or update GitHub Release
       uses: softprops/action-gh-release@v1
