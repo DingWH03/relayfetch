@@ -23,7 +23,7 @@ source=(
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
-  install -Dm755 "relayfetch-@ARCH@" "$pkgdir/usr/bin/relayfetch"
+  install -Dm755 "relayfetch-@ARCH@" "$pkgdir/usr/local/bin/relayfetch"
   install -Dm644 config.toml "$pkgdir/etc/relayfetch/config.toml"
   install -Dm644 files.toml "$pkgdir/etc/relayfetch/files.toml"
   install -Dm644 relayfetch.service "$pkgdir/etc/systemd/system/relayfetch.service"
