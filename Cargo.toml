@@ -1,4 +1,5 @@
 [workspace]
+workspace.resolver = "3"
 members = [
     "relayfetch"
 ]

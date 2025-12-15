@@ -1,0 +1,119 @@
+name: Rust Cross-Compile & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET_DIR: target/release
+  CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+  CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
+  CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+  CC_aarch64_unknown_linux-gnu: aarch64-linux-gnu-gcc
+  CXX_aarch64_unknown_linux-gnu: aarch64-linux-gnu-g++
+  CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
+  CC_riscv64gc_unknown_linux_gnu: riscv64-linux-gnu-gcc
+  CXX_riscv64gc_unknown_linux_gnu: riscv64-linux-gnu-g++
+
+jobs:
+  build-binaries:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        arch: [amd64, arm64, armv7, riscv64]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install cross-compilers
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential cmake pkg-config fakeroot dpkg-dev jq protobuf-compiler \
+                            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+                            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+                            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+                            gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+
+    - name: Setup target
+      run: |
+        case "${{ matrix.arch }}" in
+          amd64) TARGET=x86_64-unknown-linux-gnu ;;
+          arm64) TARGET=aarch64-unknown-linux-gnu ;;
+          armv7) TARGET=armv7-unknown-linux-gnueabihf ;;
+          riscv64) TARGET=riscv64gc-unknown-linux-gnu ;;
+        esac
+        rustup target add $TARGET
+        echo "TARGET=$TARGET" >> $GITHUB_ENV
+
+    - name: Build relayfetch binary
+      run: cargo build --release --target $TARGET
+
+    - name: Prepare release artifact
+      run: |
+        mkdir -p release
+        VERSION=${GITHUB_REF#refs/tags/v}
+        case "${{ matrix.arch }}" in
+          amd64) ARCH=amd64 ;;
+          arm64) ARCH=arm64 ;;
+          armv7) ARCH=armv7 ;;
+          riscv64) ARCH=riscv64 ;;
+        esac
+        cp $TARGET_DIR/relayfetch release/relayfetch-${VERSION}-linux-${ARCH}
+
+    - name: Create or update GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload binaries to Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release/*
+
+  build-arch-pkgs:
+    needs: build-binaries
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64, armv7h, riscv64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arch tools
+        run: |
+          sudo apt update
+          sudo apt install -y pacman-package-manager
+          sudo pacman -Sy --noconfirm base-devel curl
+
+      - name: Extract version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      - name: Generate dist-bin
+        run: |
+          cd package/arch
+          ./generate.sh "$VERSION"
+
+      - name: Build Arch package
+        run: |
+          cd dist-bin/${{ matrix.arch }}
+          makepkg --noconfirm --clean
+          mkdir -p ../../release
+          cp *.pkg.tar.zst ../../release/
+
+      - name: Upload Arch packages to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.pkg.tar.zst

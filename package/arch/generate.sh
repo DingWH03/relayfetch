@@ -7,14 +7,42 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-# 源码包
-mkdir -p dist-src
-sed "s/@VERSION@/$VERSION/g" PKGBUILD.src.in > dist-src/PKGBUILD
-cp relayfetch.install relayfetch.service config.toml files.toml dist-src/
-(cd dist-src && makepkg --printsrcinfo > .SRCINFO)
+ARCHS=("x86_64" "aarch64" "armv7" "riscv64")
 
-# 二进制包
-mkdir -p dist-bin
-sed "s/@VERSION@/$VERSION/g" PKGBUILD.bin.in > dist-bin/PKGBUILD
-cp relayfetch.install relayfetch.service config.toml files.toml dist-bin/
-(cd dist-bin && makepkg --printsrcinfo > .SRCINFO)
+# -------------------------
+# 生成源码包
+# -------------------------
+OUTDIR="dist-src/relayfetch"
+rm -rf "$OUTDIR"
+mkdir -p "$OUTDIR"
+
+# 生成 PKGBUILD
+sed "s/@VERSION@/$VERSION/g" PKGBUILD.src.in > "$OUTDIR/PKGBUILD"
+
+# 拷贝附属文件
+cp relayfetch.install \
+   relayfetch.service \
+   config.toml \
+   files.toml \
+   "$OUTDIR/"
+
+# 生成 .SRCINFO（不构建）
+(
+  cd "$OUTDIR"
+  makepkg --printsrcinfo > .SRCINFO
+)
+
+# -------------------------
+# 生成二进制包
+# -------------------------
+for arch in "${ARCHS[@]}"; do
+  OUTDIR="dist-bin/$arch"
+  mkdir -p "$OUTDIR"
+
+  sed -e "s/@VERSION@/$VERSION/g" -e "s/@ARCH@/$arch/g" PKGBUILD.bin.in > "$OUTDIR/PKGBUILD"
+  cp relayfetch.install relayfetch.service config.toml files.toml "$OUTDIR/"
+  (cd "$OUTDIR" && makepkg --printsrcinfo > .SRCINFO)
+done
+
+echo "==> 生成完成，目录结构："
+tree dist-src dist-bin
