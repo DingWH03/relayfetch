@@ -20,7 +20,7 @@ post_install() {
   # 设置配置文件权限
   mkdir -p /etc/relayfetch
   chown -R relayfetch:relayfetch /etc/relayfetch
-  chmod 750 /etc/relayfetch
+  chmod 755 /etc/relayfetch
 
   systemctl daemon-reload
 }
