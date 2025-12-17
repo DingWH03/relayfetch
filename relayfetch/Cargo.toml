@@ -18,7 +18,7 @@ header = "0.0.0"
 log = "0.4.29"
 openssl = { version = "0.10.75", features = ["vendored"] }
 prost = "0.14.1"
-reqwest = { version = "0.12.25", features = ["rustls-tls", "native-tls-vendored", "stream"] }
+reqwest = { version = "0.12.25", features = ["rustls-tls", "native-tls-vendored", "stream", "hickory-dns"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 tokio = { version = "1.48.0", features = ["full"] }

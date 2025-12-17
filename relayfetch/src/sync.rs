@@ -200,15 +200,15 @@ where
             Ok(_) => return Ok(()),
             Err(e) => {
                 error!("File {}: attempt {} failed: {}", file, attempt + 1, e);
-                report(FileEvent::Error {
-                    file: file.clone(),
-                    error: format!("Attempt {} failed: {}", attempt + 1, e)
-                }).await;
 
                 if attempt + 1 < max_retry {
                     let delay = base_delay * 2u64.pow(attempt as u32);
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 } else {
+                    report(FileEvent::Error {
+                    file: file.clone(),
+                    error: format!("Attempt {} failed: {}", attempt + 1, e)
+                }).await;
                     return Err(e);
                 }
             }
@@ -227,12 +227,32 @@ pub async fn sync_once(cc: Arc<ConfigCenter>) -> Result<()> {
     let semaphore = Arc::new(Semaphore::new(cc.config().await.download_concurrency));
     let mut tasks = FuturesUnordered::new();
 
-    let client = reqwest::Client::new();
+    // --- 加载代理 ---
+    let cfg_snapshot = cc.config().await;
+
+    let mut client_builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30)) // 建议设置全局超时
+        .hickory_dns(true); // 代理环境下开启 trust_dns 通常更稳定
+
+    // 判断 proxy 配置是否存在
+    if let Some(proxy_url) = &cfg_snapshot.proxy {
+        if !proxy_url.is_empty() {
+            info!("Using proxy: {}", proxy_url);
+            // 尝试构建代理对象，如果格式非法则抛出错误
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .with_context(|| format!("Invalid proxy URL: {}", proxy_url))?;
+            client_builder = client_builder.proxy(proxy);
+        }
+    }
+
+    let client = client_builder.build()
+        .context("Failed to build reqwest client")?;
 
     // 初始化状态
     let files = cc.files().await.files.clone();
     cc.sync_started(files.len()).await;
     info!("Starting sync of {} files", files.len());
+
 
     for (file, url) in files {
         let permit = semaphore.clone().acquire_owned().await.unwrap();
@@ -243,7 +263,7 @@ pub async fn sync_once(cc: Arc<ConfigCenter>) -> Result<()> {
             let _permit = permit;
             let cfg = cc.config().await;
 
-            let result = download_file(
+            let _ = download_file(
                 &client,
                 cfg.storage_dir.clone(),
                 file.clone(),
@@ -272,11 +292,6 @@ pub async fn sync_once(cc: Arc<ConfigCenter>) -> Result<()> {
                 },
             )
             .await;
-
-            if let Err(e) = result {
-                error!("File {}: final download failed: {}", file, e);
-                cc.file_error(file.clone(), e.to_string()).await;
-            }
         }));
     }
 
