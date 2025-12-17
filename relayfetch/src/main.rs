@@ -77,13 +77,8 @@ fn spawn_periodic_sync(cc: Arc<ConfigCenter>) {
         // 启动时立即同步一次
         {
             let _permit = sync_lock.acquire().await.unwrap();
-            let cfg_read = cc.config().await;
-            let files_read = cc.files().await;
-            if let Err(e) = sync::sync_once(&cfg_read, &files_read.files).await {
+            if let Err(e) = sync::sync_once(cc.clone()).await {
                 log::error!("[sync] error: {:?}", e);
-                cc.update_sync_status(false).await;
-            } else {
-                cc.update_sync_status(true).await;
             }
         }
 
@@ -97,14 +92,9 @@ fn spawn_periodic_sync(cc: Arc<ConfigCenter>) {
             tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
 
             let _permit = sync_lock.acquire().await.unwrap();
-            let cfg_read = cc.config().await;
-            let files_read = cc.files().await;
 
-            if let Err(e) = sync::sync_once(&cfg_read, &files_read.files).await {
+            if let Err(e) = sync::sync_once(cc.clone()).await {
                 log::error!("[sync] error: {:?}", e);
-                cc.update_sync_status(false).await;
-            } else {
-                cc.update_sync_status(true).await;
             }
         }
     });

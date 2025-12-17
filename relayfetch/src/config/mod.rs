@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::SystemTime};
 
 use anyhow::Ok;
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::{sync::Arc};
 use tokio::sync::RwLock;
 
-use crate::sync::SyncStatus;
+use crate::sync::{FileProgress, SyncStatus};
 
 use std::{fs};
 
@@ -58,9 +58,13 @@ impl ConfigCenter {
             config: Arc::new(RwLock::new(cfg)),
             files: Arc::new(RwLock::new(files_cfg)),
             sync_state: Arc::new(RwLock::new(SyncStatus {
+                running: false,
                 last_sync: None,
                 last_ok_sync: None,
                 last_result: None,
+                total_files: 0,
+                finished_files: 0,
+                files: HashMap::new(),
             })),
         }
     }
@@ -97,12 +101,77 @@ impl ConfigCenter {
         self.sync_state.read().await
     }
 
-    pub async fn update_sync_status(&self, ok: bool) {
+    pub async fn sync_started(&self, total_files: usize) {
         let mut s = self.sync_state.write().await;
-        s.last_sync = Some(std::time::SystemTime::now());
-        s.last_ok_sync = if ok { Some(std::time::SystemTime::now()) } else { s.last_ok_sync };
-        s.last_result = Some(ok);
+        s.running = true;
+        s.total_files = total_files;
+        s.finished_files = 0;
+        s.files.clear();
     }
+
+    pub async fn sync_finished(&self, ok: bool) {
+        let mut s = self.sync_state.write().await;
+        s.running = false;
+        s.last_sync = Some(SystemTime::now());
+        s.last_result = Some(ok);
+        if ok {
+            s.last_ok_sync = Some(SystemTime::now());
+        }
+    }
+
+    pub async fn file_started(
+        &self,
+        file: String,
+        total: Option<u64>,
+    ) {
+        let mut s = self.sync_state.write().await;
+        s.files.insert(file.clone(), FileProgress {
+            file,
+            downloaded: 0,
+            total,
+            done: false,
+            error: None,
+        });
+    }
+
+    pub async fn file_progress(
+        &self,
+        file: &str,
+        downloaded: u64,
+    ) {
+        let mut s = self.sync_state.write().await;
+        if let Some(fp) = s.files.get_mut(file) {
+            fp.downloaded = downloaded;
+        }
+    }
+
+    pub async fn file_finished(
+        &self,
+        file: &str,
+    ) {
+        let mut s = self.sync_state.write().await;
+        if let Some(fp) = s.files.get_mut(file) {
+            fp.done = true;
+        }
+        s.finished_files += 1;
+    }
+
+    pub async fn file_error(
+        &self,
+        file: String,
+        error: String,
+    ) {
+        let mut s = self.sync_state.write().await;
+        s.files.insert(file.clone(), FileProgress {
+            file,
+            downloaded: 0,
+            total: None,
+            done: true,
+            error: Some(error),
+        });
+        s.finished_files += 1;
+    }
+
 }
 
 
@@ -130,6 +199,12 @@ pub struct Config {
     #[serde(default = "default_url")]
     pub url: String,
     pub proxy: Option<String>,
+    #[serde(default = "default_download_concurrency")]
+    pub download_concurrency: usize,
+    #[serde(default = "default_download_retry")]
+    pub download_retry: usize,
+    #[serde(default = "default_retry_base_delay")]
+    pub retry_base_delay_ms: u64,
 }
 
 impl Config {
@@ -164,6 +239,18 @@ fn default_admin() -> String {
 fn default_url() -> String {
     "localhost".into()
 
+}
+
+fn default_download_concurrency() -> usize {
+    4
+}
+
+fn default_download_retry() -> usize {
+    3
+}
+
+fn default_retry_base_delay() -> u64 {
+    1000
 }
 
 // ================= files.toml =================

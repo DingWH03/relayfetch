@@ -60,16 +60,13 @@ impl Management for ManagementService {
         _request: Request<TriggerSyncRequest>,
     ) -> Result<Response<TriggerSyncResponse>, Status> {
         info!("Triggering immediate sync...");
-        let cfg_read = self.cc.config().await;
-        let files_read = self.cc.files().await;
-        match sync::sync_once(&cfg_read, &files_read.files).await {
+        let cc = self.cc.clone();
+        match sync::sync_once(cc).await {
             Ok(_) => {
-                self.cc.update_sync_status(true).await;
                 Ok(Response::new(TriggerSyncResponse { message: "sync completed".into() }))
             },
             Err(e) => {
                 error!("Immediate sync failed: {:?}", e);
-                self.cc.update_sync_status(false).await;
                 Err(Status::internal(format!("sync failed: {:?}", e)))
             }
         }

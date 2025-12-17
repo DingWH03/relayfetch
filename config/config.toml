@@ -16,3 +16,12 @@ admin = "0.0.0.0:25667"
 
 # 可选代理（支持 http / socks5h）
 proxy = "http://127.0.0.1:20171"
+
+# 同时下载的最大文件数
+download_concurrency = 4
+
+# 单文件最大重试次数
+download_retry = 3
+
+# 初始重试延迟（毫秒）
+retry_base_delay_ms = 500
