@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::{sync::Arc};
 use tokio::sync::RwLock;
 
-use crate::sync::{FileProgress, SyncStatus};
+use crate::sync::{FileProgress, SyncResult, SyncStatus};
 
 use std::{fs};
 
@@ -59,11 +59,13 @@ impl ConfigCenter {
             files: Arc::new(RwLock::new(files_cfg)),
             sync_state: Arc::new(RwLock::new(SyncStatus {
                 running: false,
+                start_time: None,
                 last_sync: None,
                 last_ok_sync: None,
-                last_result: None,
+                last_result: SyncResult::Pending,
                 total_files: 0,
                 finished_files: 0,
+                failed_files: 0,
                 files: HashMap::new(),
             })),
         }
@@ -104,18 +106,28 @@ impl ConfigCenter {
     pub async fn sync_started(&self, total_files: usize) {
         let mut s = self.sync_state.write().await;
         s.running = true;
+        s.start_time = Some(SystemTime::now()); // 记录开始时间
         s.total_files = total_files;
         s.finished_files = 0;
+        s.failed_files = 0;
         s.files.clear();
+        s.last_result = SyncResult::Pending;
     }
 
-    pub async fn sync_finished(&self, ok: bool) {
+    pub async fn sync_finished(&self) {
         let mut s = self.sync_state.write().await;
         s.running = false;
-        s.last_sync = Some(SystemTime::now());
-        s.last_result = Some(ok);
-        if ok {
-            s.last_ok_sync = Some(SystemTime::now());
+        let now = SystemTime::now();
+        s.last_sync = Some(now);
+
+        // 判定逻辑
+        if s.failed_files == 0 && s.finished_files == s.total_files {
+            s.last_result = SyncResult::Success;
+            s.last_ok_sync = Some(now);
+        } else if s.failed_files > 0 && s.finished_files > 0 {
+            s.last_result = SyncResult::PartialSuccess;
+        } else {
+            s.last_result = SyncResult::Failed("Some files missing or process interrupted".into());
         }
     }
 
@@ -156,11 +168,7 @@ impl ConfigCenter {
         s.finished_files += 1;
     }
 
-    pub async fn file_error(
-        &self,
-        file: String,
-        error: String,
-    ) {
+    pub async fn file_error(&self, file: String, error: String) {
         let mut s = self.sync_state.write().await;
         s.files.insert(file.clone(), FileProgress {
             file,
@@ -169,6 +177,7 @@ impl ConfigCenter {
             done: true,
             error: Some(error),
         });
+        s.failed_files += 1; // 增加失败计数
         s.finished_files += 1;
     }
 

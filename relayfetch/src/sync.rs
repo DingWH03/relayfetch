@@ -7,7 +7,7 @@ use chrono::Utc;
 use futures::{StreamExt, stream::FuturesUnordered};
 use log::{info, warn, error};
 use reqwest::header;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::SystemTime};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
@@ -20,15 +20,24 @@ use crate::meta::Meta;
 #[derive(Clone, Debug, Serialize)]
 pub struct SyncStatus {
     pub running: bool,
-
+    pub start_time: Option<SystemTime>,   // 用于计算下载时长
     pub last_sync: Option<SystemTime>,
     pub last_ok_sync: Option<SystemTime>,
-    pub last_result: Option<bool>,
+    pub last_result: SyncResult,
 
     pub total_files: usize,
     pub finished_files: usize,
+    pub failed_files: usize,              // 新增：记录失败的文件数，用于判定 PartialSuccess
 
     pub files: HashMap<String, FileProgress>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum SyncResult {
+    Success,
+    PartialSuccess, // 部分文件下载失败
+    Failed(String), // 整体下载流程崩溃（如网络完全不可用）
+    Pending,        // 尚未开始或重置状态
 }
 
 /// 单文件进度
@@ -299,7 +308,7 @@ pub async fn sync_once(cc: Arc<ConfigCenter>) -> Result<()> {
     while let Some(_) = tasks.next().await {}
 
     // 收尾
-    cc.sync_finished(true).await;
+    cc.sync_finished().await;
     info!("Sync completed");
     info!("Final sync status: {:?}", cc.sync_status().await);
 

@@ -41,21 +41,26 @@ message FileProgress {
   bool done = 4;            // 是否完成
   string error = 5;         // 错误信息 (空字符串表示无错)
 }
+enum SyncResult {
+  PENDING = 0;
+  SUCCESS = 1;
+  PARTIAL_SUCCESS = 2;
+  FAILED = 3;
+}
 message StatusResponse {
-  // 1. 运行状态
   bool is_running = 1;
   uint32 total_files = 2;
   uint32 finished_files = 3;
+  uint32 failed_files = 4;
+  uint32 stored_files = 5;
 
-  // 2. 历史结果
-  string last_sync = 4;        // RFC3339 格式
-  string last_ok_sync = 5;     // RFC3339 格式
-  bool last_sync_success = 6;
+  uint64 start_time_unix = 6;
+  string last_sync = 7;
+  string last_ok_sync = 8;
+  SyncResult last_result = 9;
 
-  // 3. 详细进度列表
-  repeated FileProgress files = 7;
-
-  // 4. 配置与环境信息
-  string storage_dir = 8;
-  string config_json = 9;      // 依然保留原始配置的 JSON 快照
+  repeated FileProgress files = 10;
+  string storage_dir = 11;
+  string config = 12;
+  string error_message = 13;
 }

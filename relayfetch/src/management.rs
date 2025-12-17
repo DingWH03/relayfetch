@@ -1,5 +1,8 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use chrono::{DateTime, Utc};
 use log::{info, error};
 use tonic::{transport::Server, Request, Response, Status};
 use walkdir::WalkDir;
@@ -19,6 +22,7 @@ use management_proto::{
 };
 
 use crate::config::{ConfigCenter};
+use crate::management::management_proto::{FileProgress, SyncResult};
 use crate::sync::{self};
 use crate::utils::{read_file_timestamp};
 
@@ -104,61 +108,65 @@ impl Management for ManagementService {
     &self,
     _request: Request<StatusRequest>,
 ) -> Result<Response<StatusResponse>, Status> {
-    // 1. 获取所有状态锁的快照
+    // 获取配置和同步状态的快照（使用只读锁）
     let cfg_read = self.cc.config().await;
-    let files_read = self.cc.files().await;
     let status_read = self.cc.sync_status().await;
 
-    // 2. 将内存中的 HashMap<String, FileProgress> 转换为 Protobuf 的列表
-    // 我们按照文件名排序，确保客户端显示的列表顺序稳定
-    let mut file_list: Vec<management_proto::FileProgress> = status_read.files.values().map(|fp| {
-        management_proto::FileProgress {
-            file: fp.file.clone(),
-            downloaded: fp.downloaded,
-            total: fp.total.unwrap_or(0),
-            done: fp.done,
-            error: fp.error.clone().unwrap_or_default(),
-        }
-    }).collect();
-    file_list.sort_by(|a, b| a.file.cmp(&b.file));
-
-    // 3. 时间格式化工具函数
-    let format_time = |opt_time: Option<std::time::SystemTime>| {
-        opt_time.map(|t| {
-            let dt: chrono::DateTime<chrono::Utc> = t.into();
-            dt.to_rfc3339()
-        }).unwrap_or_else(|| "never".to_string())
+    // 1. 处理同步结果枚举转换
+    // 将 Rust 业务枚举 SyncResult 映射为 gRPC 生成的枚举
+    let grpc_result = match &status_read.last_result {
+        crate::sync::SyncResult::Success => SyncResult::Success,
+        crate::sync::SyncResult::PartialSuccess => SyncResult::PartialSuccess,
+        crate::sync::SyncResult::Failed(_) => SyncResult::Failed,
+        crate::sync::SyncResult::Pending => SyncResult::Pending,
     };
 
-    // 4. 构建原始配置 JSON（可选，用于调试）
-    let full_config_json = serde_json::json!({
-        "interval_secs": cfg_read.interval_secs,
-        "proxy": cfg_read.proxy,
-        "concurrency": cfg_read.download_concurrency,
-        "configured_files": &files_read.files,
-    }).to_string();
+    // 2. 计算开始时间的 Unix 时间戳（用于前端计算下载耗时）
+    let start_time_unix = status_read.start_time
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
 
-    // 5. 封装最终响应
-    let reply = StatusResponse {
-        // 实时状态
+    // 3. 提取全局错误信息（如果有）
+    let global_error = if let crate::sync::SyncResult::Failed(msg) = &status_read.last_result {
+        msg.clone()
+    } else {
+        String::new()
+    };
+
+    // 4. 磁盘物理文件扫描 (可选逻辑，保留原有逻辑)
+    let storage_dir = &cfg_read.storage_dir;
+    let stored_files_count = (walkdir::WalkDir::new(storage_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .count() as u32) / 2;
+
+    // 5. 组装并返回响应
+    let response = StatusResponse {
+        // 运行状态
         is_running: status_read.running,
         total_files: status_read.total_files as u32,
         finished_files: status_read.finished_files as u32,
+        failed_files: status_read.failed_files as u32,
+        stored_files: stored_files_count, // 对应 proto 中的 stored_files
 
-        // 历史状态
-        last_sync: format_time(status_read.last_sync),
-        last_ok_sync: format_time(status_read.last_ok_sync),
-        last_sync_success: status_read.last_result.unwrap_or(false),
+        // 时间与历史结果
+        start_time_unix,
+        last_sync: format_system_time(status_read.last_sync),
+        last_ok_sync: format_system_time(status_read.last_ok_sync),
+        last_result: grpc_result.into(),
 
-        // 详细列表
-        files: file_list,
+        // 详细列表与环境信息
+        files: convert_files(&status_read.files),
+        storage_dir: storage_dir.to_string_lossy().to_string(),
+        error_message: global_error,
 
-        // 环境
-        storage_dir: cfg_read.storage_dir.to_string_lossy().to_string(),
-        config_json: full_config_json,
+        // 注意这里：字段名必须是 config，且确保 .proto 里也是 config
+        config: serde_json::to_string(&*cfg_read).unwrap_or_default(),
     };
 
-    Ok(Response::new(reply))
+    Ok(Response::new(response))
 }
 
     async fn list_files(
@@ -212,6 +220,30 @@ impl Management for ManagementService {
         Ok(Response::new(ListFilesResponse { files: result }))
     }
 
+}
+
+// 将 Rust 的 FileProgress 映射转换为 Protobuf 的 Vec 列表
+fn convert_files(map: &HashMap<String, crate::sync::FileProgress>) -> Vec<FileProgress> {
+    let mut list: Vec<_> = map.values().map(|fp| {
+        management_proto::FileProgress {
+            file: fp.file.clone(),
+            downloaded: fp.downloaded,
+            total: fp.total.unwrap_or(0),
+            done: fp.done,
+            error: fp.error.clone().unwrap_or_default(),
+        }
+    }).collect();
+    // 排序确保输出顺序稳定
+    list.sort_by(|a, b| a.file.cmp(&b.file));
+    list
+}
+
+// 统一的时间格式化工具
+fn format_system_time(t: Option<SystemTime>) -> String {
+    t.map(|t| {
+        let dt: DateTime<Utc> = t.into();
+        dt.to_rfc3339()
+    }).unwrap_or_else(|| "never".to_string())
 }
 
 /// 启动 gRPC 管理服务
