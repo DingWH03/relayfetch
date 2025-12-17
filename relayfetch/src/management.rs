@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{UNIX_EPOCH};
 
-use chrono::{DateTime, Utc};
 use log::{info, error};
 use tonic::{transport::Server, Request, Response, Status};
 use walkdir::WalkDir;
@@ -126,7 +125,14 @@ impl Management for ManagementService {
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_secs())
         .unwrap_or(0);
-
+    let last_sync_unix = status_read.last_sync
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let last_ok_sync_unix = status_read.last_ok_sync
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     // 3. 提取全局错误信息（如果有）
     let global_error = if let crate::sync::SyncResult::Failed(msg) = &status_read.last_result {
         msg.clone()
@@ -153,8 +159,8 @@ impl Management for ManagementService {
 
         // 时间与历史结果
         start_time_unix,
-        last_sync: format_system_time(status_read.last_sync),
-        last_ok_sync: format_system_time(status_read.last_ok_sync),
+        last_sync_unix,
+        last_ok_sync_unix,
         last_result: grpc_result.into(),
 
         // 详细列表与环境信息
@@ -236,14 +242,6 @@ fn convert_files(map: &HashMap<String, crate::sync::FileProgress>) -> Vec<FilePr
     // 排序确保输出顺序稳定
     list.sort_by(|a, b| a.file.cmp(&b.file));
     list
-}
-
-// 统一的时间格式化工具
-fn format_system_time(t: Option<SystemTime>) -> String {
-    t.map(|t| {
-        let dt: DateTime<Utc> = t.into();
-        dt.to_rfc3339()
-    }).unwrap_or_else(|| "never".to_string())
 }
 
 /// 启动 gRPC 管理服务

@@ -55,8 +55,8 @@ message StatusResponse {
   uint32 stored_files = 5;
 
   uint64 start_time_unix = 6;
-  string last_sync = 7;
-  string last_ok_sync = 8;
+  uint64 last_sync_unix = 7;
+  uint64 last_ok_sync_unix = 8;
   SyncResult last_result = 9;
 
   repeated FileProgress files = 10;
