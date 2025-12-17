@@ -7,6 +7,7 @@ pub struct Meta {
     pub etag: Option<String>,
     pub last_modified: Option<String>,
     pub fetched_at: Option<String>, // 本地同步时间
+    pub total_size: Option<u64>,
 }
 
 pub fn load_meta(path: &Path) -> anyhow::Result<Meta> {

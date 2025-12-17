@@ -2,23 +2,17 @@ use crate::config::ConfigCenter;
 use crate::meta::{ensure_parent_dir, save_meta};
 use crate::{meta::load_meta};
 
-use anyhow::Result;
-use log::info;
-use serde::Serialize;
-
-use std::path::PathBuf;
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
-
+use anyhow::{Context, Result};
+use chrono::Utc;
 use futures::{StreamExt, stream::FuturesUnordered};
-use tokio::{
-    io::AsyncWriteExt,
-    sync::{Semaphore},
-};
+use log::{info, warn, error};
+use reqwest::header;
+use serde::Serialize;
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::SystemTime};
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
 
 use crate::meta::Meta;
-use anyhow::Context;
-use chrono::Utc;
-use reqwest::header;
 
 /// =======================
 /// 同步状态（对外可读）
@@ -66,18 +60,15 @@ async fn download_file<F, Fut>(
     dir: PathBuf,
     file: String,
     url: String,
-    download_retry: usize,
-    retry_base_delay_ms: u64,
+    max_retry: usize,
+    base_delay: u64,
     mut report: F,
 ) -> Result<()>
 where
     F: FnMut(FileEvent) -> Fut + Send,
     Fut: std::future::Future<Output = ()> + Send,
 {
-    let max_attempts = download_retry;
-    let base_delay = retry_base_delay_ms;
-
-    for attempt in 0..max_attempts {
+    for attempt in 0..max_retry {
         let res = async {
             let file_path = dir.join(&file);
             let meta_path = file_path.with_extension("meta");
@@ -86,8 +77,16 @@ where
             let old_meta = load_meta(&meta_path).unwrap_or_default();
             let fetch_time = Utc::now();
 
+            // 获取本地实际文件大小
+            let downloaded = tokio::fs::metadata(&file_path)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0);
+
+            // --- 核心逻辑分流 ---
             let mut req = client.get(&url);
 
+            // 总是带上缓存校验头
             if let Some(etag) = &old_meta.etag {
                 req = req.header(header::IF_NONE_MATCH, etag);
             }
@@ -95,100 +94,120 @@ where
                 req = req.header(header::IF_MODIFIED_SINCE, lm);
             }
 
-            let mut downloaded = 0u64;
-            if let Ok(m) = tokio::fs::metadata(&file_path).await {
-                downloaded = m.len();
-                if downloaded > 0 {
+            // 只有当“文件不完整”时，才发送 Range 请求
+            // 如果 downloaded == old_meta.total_size，说明本地已满，仅通过上面的 ETag 校验是否有更新
+            if downloaded > 0 {
+                if let Some(total) = old_meta.total_size {
+                    if downloaded < total {
+                        req = req.header(header::RANGE, format!("bytes={}-", downloaded));
+                    }
+                } else {
+                    // 如果没有 total_size 记录，说明上次可能没下载完就断了，尝试续传
                     req = req.header(header::RANGE, format!("bytes={}-", downloaded));
                 }
             }
 
             let resp = req.send().await.context("request failed")?;
+            let status = resp.status();
 
-            if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+            // 1. 处理 304 Not Modified (文件已是最新)
+            if status == reqwest::StatusCode::NOT_MODIFIED {
                 let mut meta = old_meta;
                 meta.fetched_at = Some(fetch_time.to_rfc3339());
                 save_meta(&meta_path, &meta)?;
+                info!("File {} not modified, skipping", file);
+                report(FileEvent::Finished { file: file.clone() }).await;
                 return Ok(());
             }
 
-            if !(resp.status().is_success() || resp.status() == reqwest::StatusCode::PARTIAL_CONTENT) {
-                anyhow::bail!("download failed: {}", resp.status());
+            // 2. 处理 416 Range Not Satisfiable
+            // 这通常意味着本地文件长度 >= 服务器文件长度，但 ETag 校验没过或服务器不支持续传
+            if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                warn!("File {}: 416 Range Not Satisfiable, cleaning up and restarting", file);
+                let _ = tokio::fs::remove_file(&file_path).await;
+                let _ = tokio::fs::remove_file(&meta_path).await;
+                anyhow::bail!("Range not satisfiable");
             }
 
-            let new_etag = resp
-                .headers()
+            // 3. 校验状态码 (200 OK 或 206 Partial Content)
+            if !(status.is_success() || status == reqwest::StatusCode::PARTIAL_CONTENT) {
+                anyhow::bail!("download failed: {}", status);
+            }
+
+            let new_etag = resp.headers()
                 .get(header::ETAG)
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
 
-            if downloaded > 0 && old_meta.etag.is_some() && old_meta.etag != new_etag {
-                anyhow::bail!("etag mismatch, remote changed");
+            // 4. ETag 强校验：如果正在续传但 ETag 变了，必须删了重来
+            if status == reqwest::StatusCode::PARTIAL_CONTENT && old_meta.etag.is_some() && old_meta.etag != new_etag {
+                warn!("File {}: ETag mismatch during resume, restarting", file);
+                let _ = tokio::fs::remove_file(&file_path).await;
+                anyhow::bail!("ETag mismatch");
             }
 
-            let total = resp.content_length().map(|l| l + downloaded);
+            // 计算新的总大小
+            let content_len = resp.content_length();
+            let total = if status == reqwest::StatusCode::PARTIAL_CONTENT {
+                content_len.map(|l| l + downloaded)
+            } else {
+                content_len
+            };
 
-            report(FileEvent::Started {
-                file: file.clone(),
-                total,
-            })
-            .await;
+            report(FileEvent::Started { file: file.clone(), total }).await;
 
-            let mut out = if downloaded > 0 {
-                tokio::fs::OpenOptions::new()
-                    .append(true)
-                    .open(&file_path)
-                    .await?
+            // Extract headers before consuming response
+            let last_modified = resp.headers()
+                .get(header::LAST_MODIFIED)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            // 5. 写入流
+            let mut out = if status == reqwest::StatusCode::PARTIAL_CONTENT {
+                tokio::fs::OpenOptions::new().append(true).open(&file_path).await?
             } else {
                 tokio::fs::File::create(&file_path).await?
             };
 
-            // 使用 chunk()，最稳
-            let mut resp = resp;
-            while let Some(chunk) = resp.chunk().await? {
+            let mut current_pos = if status == reqwest::StatusCode::PARTIAL_CONTENT { downloaded } else { 0 };
+            let mut stream = resp.bytes_stream();
+
+            while let Some(item) = stream.next().await {
+                let chunk = item.context("error while downloading chunk")?;
                 out.write_all(&chunk).await?;
-                downloaded += chunk.len() as u64;
-
-                report(FileEvent::Progress {
-                    file: file.clone(),
-                    downloaded,
-                })
-                .await;
+                current_pos += chunk.len() as u64;
+                report(FileEvent::Progress { file: file.clone(), downloaded: current_pos }).await;
             }
-
             out.flush().await?;
 
-            let meta = Meta {
+            // 6. 保存 Meta
+            let final_meta = Meta {
                 etag: new_etag,
-                last_modified: resp
-                    .headers()
-                    .get(header::LAST_MODIFIED)
-                    .and_then(|v| v.to_str().ok())
-                    .map(|s| s.to_string()),
+                last_modified,
                 fetched_at: Some(fetch_time.to_rfc3339()),
+                total_size: total, // 存入总大小供下次对比
             };
-            save_meta(&meta_path, &meta)?;
+            save_meta(&meta_path, &final_meta)?;
 
             report(FileEvent::Finished { file: file.clone() }).await;
-
+            info!("File {} downloaded successfully", file);
             Ok(())
         }
         .await;
 
+        // --- 指数退避重试逻辑 ---
         match res {
             Ok(_) => return Ok(()),
             Err(e) => {
+                error!("File {}: attempt {} failed: {}", file, attempt + 1, e);
                 report(FileEvent::Error {
                     file: file.clone(),
-                    error: format!("Attempt {} failed: {}", attempt + 1, e),
-                })
-                .await;
+                    error: format!("Attempt {} failed: {}", attempt + 1, e)
+                }).await;
 
-                if attempt + 1 < max_attempts {
-                    // 指数退避
+                if attempt + 1 < max_retry {
                     let delay = base_delay * 2u64.pow(attempt as u32);
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                    continue;
                 } else {
                     return Err(e);
                 }
@@ -223,6 +242,7 @@ pub async fn sync_once(cc: Arc<ConfigCenter>) -> Result<()> {
         tasks.push(tokio::spawn(async move {
             let _permit = permit;
             let cfg = cc.config().await;
+
             let result = download_file(
                 &client,
                 cfg.storage_dir.clone(),
@@ -234,15 +254,18 @@ pub async fn sync_once(cc: Arc<ConfigCenter>) -> Result<()> {
                     // 同步回调，只做轻量事情
                     match event {
                         FileEvent::Started { file, total } => {
+                            info!("Started downloading file {} (total: {:?})", file, total);
                             cc.file_started(file.clone(), total).await;
                         }
                         FileEvent::Progress { file, downloaded } => {
                             cc.file_progress(&file, downloaded).await;
                         }
                         FileEvent::Finished { file } => {
+                            info!("Finished downloading file {}", file);
                             cc.file_finished(&file).await;
                         }
                         FileEvent::Error { file, error } => {
+                            warn!("File {} error: {}", file, error);
                             cc.file_error(file.clone(), error.to_string()).await;
                         }
                     }
@@ -251,12 +274,13 @@ pub async fn sync_once(cc: Arc<ConfigCenter>) -> Result<()> {
             .await;
 
             if let Err(e) = result {
+                error!("File {}: final download failed: {}", file, e);
                 cc.file_error(file.clone(), e.to_string()).await;
             }
         }));
     }
 
-    // 等待所有下载完成
+    // 等待所有任务完成
     while let Some(_) = tasks.next().await {}
 
     // 收尾
