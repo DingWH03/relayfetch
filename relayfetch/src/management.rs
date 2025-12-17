@@ -2,8 +2,6 @@ use std::sync::Arc;
 
 use log::{info, error};
 use tonic::{transport::Server, Request, Response, Status};
-use chrono::{DateTime, Utc};
-use serde_json::json;
 use walkdir::WalkDir;
 
 pub mod management_proto {
@@ -21,7 +19,7 @@ use management_proto::{
 };
 
 use crate::config::{ConfigCenter};
-use crate::sync;
+use crate::sync::{self};
 use crate::utils::{read_file_timestamp};
 
 #[derive(Clone)]
@@ -106,49 +104,62 @@ impl Management for ManagementService {
     &self,
     _request: Request<StatusRequest>,
 ) -> Result<Response<StatusResponse>, Status> {
+    // 1. 获取所有状态锁的快照
     let cfg_read = self.cc.config().await;
-        let files_read = self.cc.files().await;
-
-    // 文件数量
-    let total_files = files_read.files.len() as u32;
-    let storage_dir = &cfg_read.storage_dir;
-
-    let stored_files = (WalkDir::new(&storage_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .count() as u32)/2; // 每个文件有一个对应的 .meta 文件
-
-
-    // 配置内容（JSON 格式）
-    let config_json = json!({
-        "config": &*cfg_read,
-        "files": &files_read.files,
-    })
-    .to_string();
-
-    // 上一次同步状态
+    let files_read = self.cc.files().await;
     let status_read = self.cc.sync_status().await;
-    let last_sync = status_read.last_sync.map(|t| {
-        let dt: DateTime<Utc> = t.into();
-        dt.to_rfc3339()
-    });
-    let last_ok_sync = status_read.last_ok_sync.map(|t| {
-        let dt: DateTime<Utc> = t.into();
-        dt.to_rfc3339()
-    });
-    let last_sync_success = status_read.last_result;
 
-    Ok(Response::new(StatusResponse {
-        total_files,
-        stored_files,
-        storage_dir: storage_dir.to_string_lossy().to_string(),
-        config: config_json,
-        last_sync: last_sync.unwrap_or("never".into()),
-        last_ok_sync: last_ok_sync.unwrap_or("never".into()),
-        last_sync_success: last_sync_success.unwrap_or(false),
-    }))
-    }
+    // 2. 将内存中的 HashMap<String, FileProgress> 转换为 Protobuf 的列表
+    // 我们按照文件名排序，确保客户端显示的列表顺序稳定
+    let mut file_list: Vec<management_proto::FileProgress> = status_read.files.values().map(|fp| {
+        management_proto::FileProgress {
+            file: fp.file.clone(),
+            downloaded: fp.downloaded,
+            total: fp.total.unwrap_or(0),
+            done: fp.done,
+            error: fp.error.clone().unwrap_or_default(),
+        }
+    }).collect();
+    file_list.sort_by(|a, b| a.file.cmp(&b.file));
+
+    // 3. 时间格式化工具函数
+    let format_time = |opt_time: Option<std::time::SystemTime>| {
+        opt_time.map(|t| {
+            let dt: chrono::DateTime<chrono::Utc> = t.into();
+            dt.to_rfc3339()
+        }).unwrap_or_else(|| "never".to_string())
+    };
+
+    // 4. 构建原始配置 JSON（可选，用于调试）
+    let full_config_json = serde_json::json!({
+        "interval_secs": cfg_read.interval_secs,
+        "proxy": cfg_read.proxy,
+        "concurrency": cfg_read.download_concurrency,
+        "configured_files": &files_read.files,
+    }).to_string();
+
+    // 5. 封装最终响应
+    let reply = StatusResponse {
+        // 实时状态
+        is_running: status_read.running,
+        total_files: status_read.total_files as u32,
+        finished_files: status_read.finished_files as u32,
+
+        // 历史状态
+        last_sync: format_time(status_read.last_sync),
+        last_ok_sync: format_time(status_read.last_ok_sync),
+        last_sync_success: status_read.last_result.unwrap_or(false),
+
+        // 详细列表
+        files: file_list,
+
+        // 环境
+        storage_dir: cfg_read.storage_dir.to_string_lossy().to_string(),
+        config_json: full_config_json,
+    };
+
+    Ok(Response::new(reply))
+}
 
     async fn list_files(
         &self,

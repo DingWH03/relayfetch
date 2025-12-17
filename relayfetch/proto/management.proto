@@ -34,13 +34,28 @@ message CleanUnusedFilesRequest {}
 message CleanUnusedFilesResponse { repeated string removed = 1; }
 
 message StatusRequest {}
-message StatusResponse {
-  uint32 total_files = 1;
-  uint32 stored_files = 2;
-  string storage_dir = 3;
-  string config = 4;
-  string last_sync = 5;
-  string last_ok_sync = 6;
-  bool last_sync_success = 7;
+message FileProgress {
+  string file = 1;          // 文件名
+  uint64 downloaded = 2;    // 已下载字节
+  uint64 total = 3;         // 总字节 (0 表示未知)
+  bool done = 4;            // 是否完成
+  string error = 5;         // 错误信息 (空字符串表示无错)
 }
+message StatusResponse {
+  // 1. 运行状态
+  bool is_running = 1;
+  uint32 total_files = 2;
+  uint32 finished_files = 3;
 
+  // 2. 历史结果
+  string last_sync = 4;        // RFC3339 格式
+  string last_ok_sync = 5;     // RFC3339 格式
+  bool last_sync_success = 6;
+
+  // 3. 详细进度列表
+  repeated FileProgress files = 7;
+
+  // 4. 配置与环境信息
+  string storage_dir = 8;
+  string config_json = 9;      // 依然保留原始配置的 JSON 快照
+}
