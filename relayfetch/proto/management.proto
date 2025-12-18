@@ -9,7 +9,9 @@ service Management {
   rpc CleanUnusedFiles(CleanUnusedFilesRequest) returns (CleanUnusedFilesResponse);
   rpc Status(StatusRequest) returns (StatusResponse);
   rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  rpc UpdateFiles(UpdateFilesRequest) returns (UpdateFilesResponse);
 }
 
 message FileInfo {
@@ -20,6 +22,25 @@ message FileInfo {
 message ListFilesRequest {}
 message ListFilesResponse {
   repeated FileInfo files = 1;
+}
+
+// 单个文件项
+message FileItem {
+  string filename = 1;
+  string path = 2; // URL
+}
+
+// 请求：可以新增、删除或者覆盖
+message UpdateFilesRequest {
+  repeated FileItem add_files = 1;       // 新增或更新
+  repeated string remove_files = 2;      // 删除
+  bool replace_all = 3;                  // true = 替换整个列表
+  repeated FileItem new_files = 4;       // replace_all = true 时使用
+}
+
+// 响应
+message UpdateFilesResponse {
+  string message = 1;
 }
 
 message PingRequest {}
@@ -76,4 +97,19 @@ message GetConfigResponse {
   uint32 download_concurrency = 7;
   uint32 download_retry = 8;
   uint32 retry_base_delay_ms = 9;
+}
+
+message UpdateConfigRequest {
+  optional uint32 interval_secs = 1;
+  optional string storage_dir = 2;
+  optional string url = 3;
+  optional string bind = 4;
+  optional string admin = 5;
+  optional string proxy = 6; // 空字符串表示清空
+  optional uint32 download_concurrency = 7;
+  optional uint32 download_retry = 8;
+  optional uint32 retry_base_delay_ms = 9;
+}
+message UpdateConfigResponse {
+  string message = 1;
 }

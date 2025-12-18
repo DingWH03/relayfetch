@@ -85,7 +85,7 @@ impl ConfigCenter {
         }
     }
 
-    /// 运行期重载（给 gRPC 用）
+    /// 运行期重载配置文件（给 gRPC 用）
     pub async fn reload_configs(&self) -> anyhow::Result<()> {
         let cfg_str = fs::read_to_string(&self.runtime.config_path)?;
 
@@ -103,6 +103,66 @@ impl ConfigCenter {
         Ok(())
     }
 
+    // ========= 核心：运行时修改并持久化 =========
+
+    pub async fn update_config<F>(&self, f: F) -> anyhow::Result<()>
+    where
+        F: FnOnce(&mut Config) -> anyhow::Result<()>,
+    {
+        // 同步进行中禁止改配置
+        if self.sync_state.read().await.running {
+            anyhow::bail!("cannot modify config while syncing");
+        }
+
+        let mut cfg = self.config.write().await;
+
+        f(&mut cfg)?;       // 修改
+        cfg.finalize();     // 派生字段
+
+        self.persist_config(&cfg).await?;
+
+        Ok(())
+    }
+
+    async fn persist_config(&self, cfg: &Config) -> anyhow::Result<()> {
+        let toml = toml::to_string_pretty(cfg)?;
+
+        let path = &self.runtime.config_path;
+        let tmp = path.with_extension("toml.tmp");
+
+        tokio::fs::write(&tmp, toml).await?;
+        tokio::fs::rename(&tmp, path).await?;
+
+        Ok(())
+    }
+
+    /// 更新 files.toml 内容（给 gRPC 用）
+
+    pub async fn update_files<F>(&self, f: F) -> anyhow::Result<()>
+    where
+        F: FnOnce(&mut FilesConfig) -> anyhow::Result<()>,
+    {
+        // 同步进行中禁止改配置
+        if self.sync_state.read().await.running {
+            anyhow::bail!("cannot modify config while syncing");
+        }
+        
+        let mut files = self.files.write().await;
+        f(&mut files)?;
+        self.persist_files(&files).await?;
+        Ok(())
+    }
+
+    async fn persist_files(&self, files: &FilesConfig) -> anyhow::Result<()> {
+        let toml = toml::to_string_pretty(files)?;
+        let path = &self.runtime.files_path;
+        let tmp = path.with_extension("toml.tmp");
+
+        tokio::fs::write(&tmp, toml).await?;
+        tokio::fs::rename(&tmp, path).await?;
+        Ok(())
+    }
+
     // ====== 读接口（给 sync / status 用） ======
 
     pub async fn config(&self) -> tokio::sync::RwLockReadGuard<'_, Config> {
@@ -116,6 +176,8 @@ impl ConfigCenter {
     pub async fn sync_status(&self) -> tokio::sync::RwLockReadGuard<'_, SyncStatus> {
         self.sync_state.read().await
     }
+
+    // ====== 写接口（给 sync 用） ======
 
     pub async fn sync_started(&self, total_files: usize) {
         let mut s = self.sync_state.write().await;
