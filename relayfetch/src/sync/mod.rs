@@ -1,6 +1,8 @@
+pub mod meta;
+
 use crate::config::ConfigCenter;
-use crate::meta::{ensure_parent_dir, save_meta};
-use crate::{meta::load_meta};
+use meta::{ensure_parent_dir, save_meta};
+use {meta::load_meta};
 
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -12,7 +14,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc, time::SystemTime};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 
-use crate::meta::Meta;
+use meta::Meta;
 
 /// =======================
 /// 同步状态（对外可读）

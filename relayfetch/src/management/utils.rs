@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 
 use std::path::Path;
-use crate::meta::{load_meta};
+use crate::sync::meta::{load_meta};
 
 pub fn read_file_timestamp(path: &Path) -> Option<DateTime<Utc>> {
     // 正确的 meta 路径：foo -> foo.meta

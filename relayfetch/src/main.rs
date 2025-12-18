@@ -6,11 +6,9 @@
 // 4. 提供本地 HTTP 下载服务（路径与存储一致）
 
 mod config;
-mod meta;
 mod server;
 mod signal;
 mod sync;
-mod utils;
 
 #[cfg(feature = "management")]
 mod management;

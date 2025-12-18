@@ -1,3 +1,5 @@
+mod utils;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{UNIX_EPOCH};
@@ -23,7 +25,7 @@ use management_proto::{
 use crate::config::{ConfigCenter};
 use crate::management::management_proto::{FileProgress, GetConfigRequest, GetConfigResponse, SyncResult};
 use crate::sync::{self};
-use crate::utils::{read_file_timestamp};
+use utils::read_file_timestamp;
 
 #[derive(Clone)]
 pub struct ManagementService {
