@@ -8,6 +8,7 @@ service Management {
   rpc TriggerSync(TriggerSyncRequest) returns (TriggerSyncResponse);
   rpc CleanUnusedFiles(CleanUnusedFilesRequest) returns (CleanUnusedFilesResponse);
   rpc Status(StatusRequest) returns (StatusResponse);
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
 }
 
@@ -61,6 +62,18 @@ message StatusResponse {
 
   repeated FileProgress files = 10;
   string storage_dir = 11;
-  string config = 12;
-  string error_message = 13;
+  string error_message = 12;
+}
+
+message GetConfigRequest {}
+message GetConfigResponse {
+  string storage_dir = 1;
+  string bind = 2;
+  string admin = 3;
+  string proxy = 4;
+  string url = 5;
+  uint32 interval_secs = 6;
+  uint32 download_concurrency = 7;
+  uint32 download_retry = 8;
+  uint32 retry_base_delay_ms = 9;
 }

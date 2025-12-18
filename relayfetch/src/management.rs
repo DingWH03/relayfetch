@@ -21,7 +21,7 @@ use management_proto::{
 };
 
 use crate::config::{ConfigCenter};
-use crate::management::management_proto::{FileProgress, SyncResult};
+use crate::management::management_proto::{FileProgress, GetConfigRequest, GetConfigResponse, SyncResult};
 use crate::sync::{self};
 use crate::utils::{read_file_timestamp};
 
@@ -168,12 +168,31 @@ impl Management for ManagementService {
         storage_dir: storage_dir.to_string_lossy().to_string(),
         error_message: global_error,
 
-        // 注意这里：字段名必须是 config，且确保 .proto 里也是 config
-        config: serde_json::to_string(&*cfg_read).unwrap_or_default(),
     };
 
     Ok(Response::new(response))
 }
+
+    async fn get_config(
+        &self,
+        _request: Request<GetConfigRequest>,
+    ) -> Result<Response<GetConfigResponse>, Status> {
+        let cfg = self.cc.config().await;
+
+        let response = GetConfigResponse {
+            storage_dir: cfg.storage_dir.to_string_lossy().to_string(),
+            bind: cfg.bind.clone(),
+            admin: cfg.admin.clone(),
+            proxy: cfg.proxy.clone().unwrap_or_default(),
+            url: cfg.url.clone(),
+            interval_secs: cfg.interval_secs as u32,
+            download_concurrency: cfg.download_concurrency as u32,
+            download_retry: cfg.download_retry as u32,
+            retry_base_delay_ms: cfg.retry_base_delay_ms as u32,
+        };
+
+        Ok(Response::new(response))
+    }
 
     async fn list_files(
         &self,
