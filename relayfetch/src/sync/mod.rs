@@ -79,17 +79,72 @@ where
     F: FnMut(FileEvent) -> Fut + Send,
     Fut: std::future::Future<Output = ()> + Send,
 {
+    let file_path = dir.join(&file);
+    let tmp_path = file_path.with_extension("tmp"); // 临时文件
+    let meta_path = file_path.with_extension("meta");
+
+    ensure_parent_dir(&file_path)?;
+
+    // ---------- 1. 检查是否需要更新 ----------
+    let old_meta = load_meta(&meta_path).unwrap_or_default();
+    let local_file_size = tokio::fs::metadata(&file_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    // 如果本地文件完整，尝试通过 GET 请求带条件头判断是否过期
+    let mut need_update = true;
+
+    if let Some(total) = old_meta.total_size {
+        if total == local_file_size {
+            // 文件完整，尝试条件 GET 判断是否更新
+            let mut req = client.get(&url);
+            if let Some(etag) = &old_meta.etag {
+                req = req.header(header::IF_NONE_MATCH, etag);
+            }
+            if let Some(lm) = &old_meta.last_modified {
+                req = req.header(header::IF_MODIFIED_SINCE, lm);
+            }
+
+            let resp = req.send().await.context("Conditional GET failed")?;
+            match resp.status() {
+                reqwest::StatusCode::NOT_MODIFIED => {
+                    // 文件未修改
+                    need_update = false;
+                    let mut meta = old_meta.clone();
+                    meta.fetched_at = Some(Utc::now().to_rfc3339());
+                    save_meta(&meta_path, &meta)?;
+                }
+                reqwest::StatusCode::OK | reqwest::StatusCode::PARTIAL_CONTENT => {
+                    // 文件已更新或服务器不支持条件请求
+                    need_update = true;
+                }
+                status => {
+                    anyhow::bail!("Unexpected status during conditional GET: {}", status);
+                }
+            }
+        }
+    }
+
+    // 如果文件不完整或者 need_update 仍为 true，将继续下载
+    if !need_update {
+        // 文件是最新的，直接跳过
+        let mut meta = old_meta;
+        meta.fetched_at = Some(Utc::now().to_rfc3339());
+        save_meta(&meta_path, &meta)?;
+        info!("File {} not modified, skipping", file);
+        report(FileEvent::Finished { file: file.clone() }).await;
+        return Ok(());
+    }
+
+    // ---------- 2. 下载到 tmp 文件 ----------
     for attempt in 0..max_retry {
         let res = async {
-            let file_path = dir.join(&file);
-            let meta_path = file_path.with_extension("meta");
-            ensure_parent_dir(&file_path)?;
-
             let old_meta = load_meta(&meta_path).unwrap_or_default();
             let fetch_time = Utc::now();
 
-            // 获取本地实际文件大小
-            let downloaded = tokio::fs::metadata(&file_path)
+            // 获取临时文件实际大小
+            let downloaded = tokio::fs::metadata(&tmp_path)
                 .await
                 .map(|m| m.len())
                 .unwrap_or(0);
@@ -121,26 +176,15 @@ where
             let resp = req.send().await.context("request failed")?;
             let status = resp.status();
 
-            // 1. 处理 304 Not Modified (文件已是最新)
-            if status == reqwest::StatusCode::NOT_MODIFIED {
-                let mut meta = old_meta;
-                meta.fetched_at = Some(fetch_time.to_rfc3339());
-                save_meta(&meta_path, &meta)?;
-                info!("File {} not modified, skipping", file);
-                report(FileEvent::Finished { file: file.clone() }).await;
-                return Ok(());
-            }
-
-            // 2. 处理 416 Range Not Satisfiable
-            // 这通常意味着本地文件长度 >= 服务器文件长度，但 ETag 校验没过或服务器不支持续传
+            // 处理 416 Range Not Satisfiable
             if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
                 warn!("File {}: 416 Range Not Satisfiable, cleaning up and restarting", file);
-                let _ = tokio::fs::remove_file(&file_path).await;
+                let _ = tokio::fs::remove_file(&tmp_path).await;
                 let _ = tokio::fs::remove_file(&meta_path).await;
                 anyhow::bail!("Range not satisfiable");
             }
 
-            // 3. 校验状态码 (200 OK 或 206 Partial Content)
+            // 校验状态码 (200 OK 或 206 Partial Content)
             if !(status.is_success() || status == reqwest::StatusCode::PARTIAL_CONTENT) {
                 anyhow::bail!("download failed: {}", status);
             }
@@ -150,10 +194,13 @@ where
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
 
-            // 4. ETag 强校验：如果正在续传但 ETag 变了，必须删了重来
-            if status == reqwest::StatusCode::PARTIAL_CONTENT && old_meta.etag.is_some() && old_meta.etag != new_etag {
+            // ETag 强校验：续传但 ETag 变了，必须删了重来
+            if status == reqwest::StatusCode::PARTIAL_CONTENT
+                && old_meta.etag.is_some()
+                && old_meta.etag != new_etag
+            {
                 warn!("File {}: ETag mismatch during resume, restarting", file);
-                let _ = tokio::fs::remove_file(&file_path).await;
+                let _ = tokio::fs::remove_file(&tmp_path).await;
                 anyhow::bail!("ETag mismatch");
             }
 
@@ -173,11 +220,11 @@ where
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
 
-            // 5. 写入流
+            // 写入 tmp 流
             let mut out = if status == reqwest::StatusCode::PARTIAL_CONTENT {
-                tokio::fs::OpenOptions::new().append(true).open(&file_path).await?
+                tokio::fs::OpenOptions::new().append(true).open(&tmp_path).await?
             } else {
-                tokio::fs::File::create(&file_path).await?
+                tokio::fs::File::create(&tmp_path).await?
             };
 
             let mut current_pos = if status == reqwest::StatusCode::PARTIAL_CONTENT { downloaded } else { 0 };
@@ -191,7 +238,10 @@ where
             }
             out.flush().await?;
 
-            // 6. 保存 Meta
+            // ---------- 3. 下载完成，替换原文件 ----------
+            tokio::fs::rename(&tmp_path, &file_path).await?;
+
+            // 保存 Meta
             let final_meta = Meta {
                 etag: new_etag,
                 last_modified,
@@ -217,9 +267,9 @@ where
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 } else {
                     report(FileEvent::Error {
-                    file: file.clone(),
-                    error: format!("Attempt {} failed: {}", attempt + 1, e)
-                }).await;
+                        file: file.clone(),
+                        error: format!("Attempt {} failed: {}", attempt + 1, e)
+                    }).await;
                     return Err(e);
                 }
             }
