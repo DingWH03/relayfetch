@@ -22,7 +22,7 @@ use std::{path::PathBuf, sync::Arc};
 use clap::Parser;
 use tokio::net::TcpListener;
 
-use crate::{config::ConfigCenter};
+use crate::config::ConfigCenter;
 
 #[derive(Parser)]
 #[command(name = "relayfetch")]
