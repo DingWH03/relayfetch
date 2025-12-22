@@ -101,7 +101,8 @@ impl Management for ManagementService {
         Ok(Response::new(GetConfigResponse {
             storage_dir: cfg.storage_dir.to_string_lossy().to_string(),
             bind: cfg.bind,
-            admin: cfg.admin,
+            grpc_admin: cfg.grpc_admin,
+            http_admin: cfg.http_admin,
             proxy: cfg.proxy.unwrap_or_default(),
             url: cfg.url,
             interval_secs: cfg.interval_secs as u32,

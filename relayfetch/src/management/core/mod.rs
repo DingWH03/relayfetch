@@ -129,7 +129,8 @@ impl ManagementCore {
         Ok(ConfigSnapshot {
             storage_dir: cfg.storage_dir.clone(),
             bind: cfg.bind.clone(),
-            admin: cfg.admin.clone(),
+            grpc_admin: cfg.grpc_admin.clone(),
+            http_admin: cfg.http_admin.clone(),
             proxy: cfg.proxy.clone(),
             url: cfg.url.clone(),
             interval_secs: cfg.interval_secs,
@@ -187,8 +188,13 @@ impl ManagementCore {
             })?;
         }
 
-        // ================== 5. admin（gRPC 管理地址） ==================
-        if let Some(ref admin) = input.admin {
+        // ================== 5. admin（gRPC和http 管理地址） ==================
+        if let Some(ref admin) = input.grpc_admin {
+            admin.to_socket_addrs().map_err(|_| {
+                CoreError::InvalidArgument("admin must be valid socket addr".into())
+            })?;
+        }
+        if let Some(ref admin) = input.http_admin {
             admin.to_socket_addrs().map_err(|_| {
                 CoreError::InvalidArgument("admin must be valid socket addr".into())
             })?;
@@ -260,8 +266,11 @@ impl ManagementCore {
                 if let Some(v) = input.bind {
                     cfg.bind = v;
                 }
-                if let Some(v) = input.admin {
-                    cfg.admin = v;
+                if let Some(v) = input.grpc_admin {
+                    cfg.grpc_admin = v;
+                }
+                if let Some(v) = input.http_admin {
+                    cfg.http_admin = v;
                 }
                 if let Some(proxy) = input.proxy {
                     cfg.proxy = proxy;

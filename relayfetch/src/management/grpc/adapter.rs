@@ -116,7 +116,8 @@ impl From<UpdateConfigRequest> for UpdateConfigInput {
             storage_dir: req.storage_dir.map(Into::into),
             url: req.url,
             bind: req.bind,
-            admin: req.admin,
+            grpc_admin: req.grpc_admin,
+            http_admin: req.http_admin,
 
             // 三态 proxy
             proxy: req.proxy.map(|v| {

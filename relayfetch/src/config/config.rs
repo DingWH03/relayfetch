@@ -15,8 +15,10 @@ pub struct Config {
     pub bind_addr: String,
     #[serde(skip)]
     pub bind_port: u16,
-    #[serde(default = "default_admin")]
-    pub admin: String,
+    #[serde(default = "default_grpc_admin")]
+    pub grpc_admin: String,
+    #[serde(default = "default_http_admin")]
+    pub http_admin: String,
     #[serde(default = "default_url")]
     pub url: String,
     pub proxy: Option<String>,
@@ -53,8 +55,12 @@ fn default_bind() -> String {
     "0.0.0.0:8080".into()
 }
 
-fn default_admin() -> String {
+fn default_grpc_admin() -> String {
     "0.0.0.0:25666".into()
+}
+
+fn default_http_admin() -> String {
+    "0.0.0.0:25667".into()
 }
 
 fn default_url() -> String {

@@ -29,7 +29,8 @@ pub struct FileInfoDto {
 pub struct ConfigSnapshot {
     pub storage_dir: PathBuf,
     pub bind: String,
-    pub admin: String,
+    pub grpc_admin: String,
+    pub http_admin: String,
     pub proxy: Option<String>,
     pub url: String,
     pub interval_secs: u64,
@@ -50,7 +51,8 @@ pub struct UpdateConfigInput {
     pub storage_dir: Option<PathBuf>,
     pub url: Option<String>,
     pub bind: Option<String>,
-    pub admin: Option<String>,
+    pub grpc_admin: Option<String>,
+    pub http_admin: Option<String>,
 
     /// proxy 的三态语义
     /// - None              => 不修改

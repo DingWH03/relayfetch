@@ -90,13 +90,14 @@ message GetConfigRequest {}
 message GetConfigResponse {
   string storage_dir = 1;
   string bind = 2;
-  string admin = 3;
-  string proxy = 4;
-  string url = 5;
-  uint32 interval_secs = 6;
-  uint32 download_concurrency = 7;
-  uint32 download_retry = 8;
-  uint32 retry_base_delay_ms = 9;
+  string grpc_admin = 3;
+  string http_admin = 4;
+  string proxy = 5;
+  string url = 6;
+  uint32 interval_secs = 7;
+  uint32 download_concurrency = 8;
+  uint32 download_retry = 9;
+  uint32 retry_base_delay_ms = 10;
 }
 
 message UpdateConfigRequest {
@@ -104,11 +105,12 @@ message UpdateConfigRequest {
   optional string storage_dir = 2;
   optional string url = 3;
   optional string bind = 4;
-  optional string admin = 5;
-  optional string proxy = 6; // 空字符串表示清空
-  optional uint32 download_concurrency = 7;
-  optional uint32 download_retry = 8;
-  optional uint32 retry_base_delay_ms = 9;
+  optional string grpc_admin = 5;
+  optional string http_admin = 6;
+  optional string proxy = 7; // 空字符串表示清空
+  optional uint32 download_concurrency = 8;
+  optional uint32 download_retry = 9;
+  optional uint32 retry_base_delay_ms = 10;
 }
 message UpdateConfigResponse {
   string message = 1;

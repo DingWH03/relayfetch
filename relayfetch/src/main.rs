@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
     spawn_periodic_sync(cc.clone());
 
     // Management 服务
-    #[cfg(feature = "management")]
+    #[cfg(feature = "management_core")]
     spawn_management(cc.clone());
 
     // 构建 HTTP 服务
@@ -99,7 +99,7 @@ fn spawn_management(cc: Arc<ConfigCenter>) {
         #[cfg(feature = "grpc_management")]
         {
             use management::serve_grpc;
-            let grpc_addr = cc.config().await.admin.parse().unwrap();
+            let grpc_addr = cc.config().await.grpc_admin.parse().unwrap();
             if let Err(e) = serve_grpc(grpc_addr, cc).await {
                 error!("Management gRPC error: {e:?}");
             }
@@ -107,7 +107,7 @@ fn spawn_management(cc: Arc<ConfigCenter>) {
         #[cfg(feature = "http_management")]
         {
             use management::serve_http;
-            let http_addr = cc.config().await.admin.parse().unwrap();
+            let http_addr = cc.config().await.http_admin.parse().unwrap();
             if let Err(e) = serve_http(http_addr, cc).await {
                 error!("Management HTTP error: {e:?}");
             }
