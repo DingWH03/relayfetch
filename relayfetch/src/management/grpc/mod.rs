@@ -1,11 +1,11 @@
-
 use std::sync::Arc;
 
 use log::info;
 use tonic::{Request, Response, Status, transport::Server};
 
-use crate::management::core::{ManagementCore, CoreError};
 use super::core::dto;
+use crate::management::core::ManagementCore;
+use crate::management::grpc::adapter::map_core_error;
 
 pub mod management_proto {
     tonic::include_proto!("management");
@@ -15,15 +15,10 @@ mod adapter;
 
 use management_proto::management_server::{Management, ManagementServer};
 use management_proto::{
-    PingRequest, PingResponse,
-    ReloadConfigRequest, ReloadConfigResponse,
-    TriggerSyncRequest, TriggerSyncResponse,
-    CleanUnusedFilesRequest, CleanUnusedFilesResponse,
-    StatusRequest, StatusResponse,
-    GetConfigRequest, GetConfigResponse,
-    UpdateConfigRequest, UpdateConfigResponse,
-    ListFilesRequest, ListFilesResponse,
-    UpdateFilesRequest, UpdateFilesResponse,
+    CleanUnusedFilesRequest, CleanUnusedFilesResponse, GetConfigRequest, GetConfigResponse,
+    ListFilesRequest, ListFilesResponse, PingRequest, PingResponse, ReloadConfigRequest,
+    ReloadConfigResponse, StatusRequest, StatusResponse, TriggerSyncRequest, TriggerSyncResponse,
+    UpdateConfigRequest, UpdateConfigResponse, UpdateFilesRequest, UpdateFilesResponse,
 };
 
 #[derive(Clone)]
@@ -33,10 +28,7 @@ pub struct ManagementService {
 
 #[tonic::async_trait]
 impl Management for ManagementService {
-    async fn ping(
-        &self,
-        _req: Request<PingRequest>,
-    ) -> Result<Response<PingResponse>, Status> {
+    async fn ping(&self, _req: Request<PingRequest>) -> Result<Response<PingResponse>, Status> {
         Ok(Response::new(PingResponse {
             message: "pong".into(),
         }))
@@ -46,10 +38,7 @@ impl Management for ManagementService {
         &self,
         _req: Request<ReloadConfigRequest>,
     ) -> Result<Response<ReloadConfigResponse>, Status> {
-        self.core
-            .reload_config()
-            .await
-            .map_err(map_core_error)?;
+        self.core.reload_config().await.map_err(map_core_error)?;
 
         Ok(Response::new(ReloadConfigResponse {
             message: "config reloaded".into(),
@@ -60,10 +49,7 @@ impl Management for ManagementService {
         &self,
         _req: Request<TriggerSyncRequest>,
     ) -> Result<Response<TriggerSyncResponse>, Status> {
-        self.core
-            .trigger_sync()
-            .await
-            .map_err(map_core_error)?;
+        self.core.trigger_sync().await.map_err(map_core_error)?;
 
         Ok(Response::new(TriggerSyncResponse {
             message: "sync completed".into(),
@@ -117,10 +103,7 @@ impl Management for ManagementService {
     ) -> Result<Response<UpdateConfigResponse>, Status> {
         let dto = dto::UpdateConfigInput::from(req.into_inner());
 
-        self.core
-            .update_config(dto)
-            .await
-            .map_err(map_core_error)?;
+        self.core.update_config(dto).await.map_err(map_core_error)?;
 
         Ok(Response::new(UpdateConfigResponse {
             message: "config updated".into(),
@@ -142,22 +125,11 @@ impl Management for ManagementService {
     ) -> Result<Response<UpdateFilesResponse>, Status> {
         let dto = dto::UpdateFilesInput::from(req.into_inner());
 
-        self.core
-            .update_files(dto)
-            .await
-            .map_err(map_core_error)?;
+        self.core.update_files(dto).await.map_err(map_core_error)?;
 
         Ok(Response::new(UpdateFilesResponse {
             message: "files config updated".into(),
         }))
-    }
-}
-
-fn map_core_error(err: CoreError) -> Status {
-    match err {
-        CoreError::InvalidArgument(msg) => Status::invalid_argument(msg),
-        CoreError::NotFound(msg) => Status::not_found(msg),
-        CoreError::Internal(msg) => Status::internal(msg),
     }
 }
 

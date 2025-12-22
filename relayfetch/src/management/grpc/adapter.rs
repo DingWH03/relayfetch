@@ -5,6 +5,7 @@
 //! - 不包含任何业务逻辑
 //! - gRPC <-> DTO 单向清晰
 
+use crate::management::core::CoreError;
 use crate::management::grpc::dto;
 use crate::management::grpc::management_proto;
 
@@ -24,6 +25,7 @@ use dto::{
     UpdateConfigInput,
     UpdateFilesInput,
 };
+use tonic::Status;
 
 // ===============================
 // DTO -> gRPC (Outbound)
@@ -152,5 +154,14 @@ impl From<UpdateFilesRequest> for UpdateFilesInput {
             replace_all: req.replace_all,
             new_files: req.new_files.into_iter().map(Into::into).collect(),
         }
+    }
+}
+
+/// 将 CoreError 映射为 gRPC Status
+pub fn map_core_error(err: CoreError) -> Status {
+    match err {
+        CoreError::InvalidArgument(msg) => Status::invalid_argument(msg),
+        CoreError::NotFound(msg) => Status::not_found(msg),
+        CoreError::Internal(msg) => Status::internal(msg),
     }
 }
