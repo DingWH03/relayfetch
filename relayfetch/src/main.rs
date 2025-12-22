@@ -16,8 +16,8 @@ mod management;
 use env_logger::Env;
 use log::{error, info};
 
-use std::{path::PathBuf, sync::Arc};
 use clap::Parser;
+use std::{path::PathBuf, sync::Arc};
 use tokio::net::TcpListener;
 
 use crate::config::ConfigCenter;
@@ -34,11 +34,9 @@ struct Args {
     files: PathBuf,
 }
 
-
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 1️⃣ 初始化
+    // 初始化
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let args = Args::parse();
     let runtime = config::RuntimeContext {
@@ -47,25 +45,22 @@ async fn main() -> anyhow::Result<()> {
     };
     let cc = Arc::new(ConfigCenter::new(runtime));
 
-    // 2️⃣ 启动后台同步任务
+    // 启动后台同步任务
     spawn_periodic_sync(cc.clone());
 
-    // 3️⃣ Management 服务
+    // Management 服务
     #[cfg(feature = "management")]
     spawn_management(cc.clone());
 
-    // 4️⃣ 构建 HTTP 服务
+    // 构建 HTTP 服务
     let storage_dir = { cc.config().await.storage_dir.clone() };
     let app = server::build_router(storage_dir);
 
-    // 5️⃣ 启动 HTTP 服务
+    // 启动 HTTP 服务
     let bind = { cc.config().await.bind.clone() };
     run_server(bind, app).await?;
     Ok(())
 }
-
-
-
 
 /// 启动周期同步任务
 fn spawn_periodic_sync(cc: Arc<ConfigCenter>) {
@@ -98,19 +93,27 @@ fn spawn_periodic_sync(cc: Arc<ConfigCenter>) {
     });
 }
 
-
-
 #[cfg(feature = "management")]
 fn spawn_management(cc: Arc<ConfigCenter>) {
     tokio::spawn(async move {
-        use management::serve_grpc;
-        let grpc_addr = cc.config().await.admin.parse().unwrap();
-        if let Err(e) = serve_grpc(grpc_addr, cc).await {
-            error!("Management gRPC error: {e:?}");
+        #[cfg(feature = "grpc")]
+        {
+            use management::serve_grpc;
+            let grpc_addr = cc.config().await.admin.parse().unwrap();
+            if let Err(e) = serve_grpc(grpc_addr, cc).await {
+                error!("Management gRPC error: {e:?}");
+            }
+        }
+        #[cfg(feature = "http")]
+        {
+            use management::serve_http;
+            let http_addr = cc.config().await.admin.parse().unwrap();
+            if let Err(e) = serve_http(http_addr, cc).await {
+                error!("Management HTTP error: {e:?}");
+            }
         }
     });
 }
-
 
 /// 启动 HTTP 服务并优雅退出
 async fn run_server(bind: String, app: axum::Router) -> anyhow::Result<()> {

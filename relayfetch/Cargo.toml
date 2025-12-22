@@ -29,7 +29,9 @@ tonic-prost = "0.14.2"
 walkdir = "2.5.0"
 
 [features]
-default = ["management"]
+default = ["grpc"]
+grpc = ["management"]
+http = ["management"]
 management = []
 
 [build-dependencies]
