@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Management 服务
     #[cfg(feature = "management_core")]
-    spawn_management(cc.clone());
+    management::admin_server(cc.clone()).await;
 
     // 构建 HTTP 服务
     let storage_dir = { cc.config().await.storage_dir.clone() };
@@ -93,27 +93,6 @@ fn spawn_periodic_sync(cc: Arc<ConfigCenter>) {
     });
 }
 
-#[cfg(feature = "management_core")]
-fn spawn_management(cc: Arc<ConfigCenter>) {
-    tokio::spawn(async move {
-        #[cfg(feature = "grpc_management")]
-        {
-            use management::serve_grpc;
-            let grpc_addr = cc.config().await.grpc_admin.parse().unwrap();
-            if let Err(e) = serve_grpc(grpc_addr, cc).await {
-                error!("Management gRPC error: {e:?}");
-            }
-        }
-        #[cfg(feature = "http_management")]
-        {
-            use management::serve_http;
-            let http_addr = cc.config().await.http_admin.parse().unwrap();
-            if let Err(e) = serve_http(http_addr, cc).await {
-                error!("Management HTTP error: {e:?}");
-            }
-        }
-    });
-}
 
 /// 启动 HTTP 服务并优雅退出
 async fn run_server(bind: String, app: axum::Router) -> anyhow::Result<()> {

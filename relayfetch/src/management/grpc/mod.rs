@@ -4,7 +4,6 @@ use std::sync::Arc;
 use log::info;
 use tonic::{Request, Response, Status, transport::Server};
 
-use crate::config::ConfigCenter;
 use crate::management::core::{ManagementCore, CoreError};
 use super::core::dto;
 
@@ -29,7 +28,7 @@ use management_proto::{
 
 #[derive(Clone)]
 pub struct ManagementService {
-    core: ManagementCore,
+    core: Arc<ManagementCore>,
 }
 
 #[tonic::async_trait]
@@ -165,9 +164,8 @@ fn map_core_error(err: CoreError) -> Status {
 /// 启动 gRPC 管理服务
 pub async fn serve_grpc(
     addr: std::net::SocketAddr,
-    cc: Arc<ConfigCenter>,
+    core: Arc<ManagementCore>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let core = ManagementCore::new(cc);
     let svc = ManagementServer::new(ManagementService { core });
 
     info!("Management gRPC listening on {}", addr);
