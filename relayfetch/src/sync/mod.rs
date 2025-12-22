@@ -128,10 +128,12 @@ where
 
     // 如果文件不完整或者 need_update 仍为 true，将继续下载
     if !need_update {
+        report(FileEvent::Started { file: file.clone(), total: old_meta.total_size }).await; // 报告开始
         // 文件是最新的，直接跳过
         let mut meta = old_meta;
         meta.fetched_at = Some(Utc::now().to_rfc3339());
         save_meta(&meta_path, &meta)?;
+        report(FileEvent::Progress { file: file.clone(), downloaded: local_file_size }).await; // 报告进度
         info!("File {} not modified, skipping", file);
         report(FileEvent::Finished { file: file.clone() }).await;
         return Ok(());
