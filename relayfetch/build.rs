@@ -1,5 +1,5 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(feature = "grpc")]
+    #[cfg(feature = "grpc_management")]
     {
         tonic_prost_build::configure()
             .build_server(true) // 生成 server stub

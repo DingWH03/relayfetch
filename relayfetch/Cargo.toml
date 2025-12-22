@@ -29,10 +29,10 @@ tonic-prost = "0.14.2"
 walkdir = "2.5.0"
 
 [features]
-default = ["grpc"]
-grpc = ["management"]
-http = ["management"]
-management = []
+default = ["grpc_management"]          # 默认启用 gRPC 管理端
+grpc_management = ["management_core"]  # 启用 gRPC 管理服务
+http_management = ["management_core"]  # 启用 HTTP 管理服务
+management_core = []                   # 核心管理逻辑，不依赖任何协议
 
 [build-dependencies]
 tonic-prost-build = "0.14.2"

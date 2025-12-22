@@ -10,7 +10,7 @@ mod server;
 mod signal;
 mod sync;
 
-#[cfg(feature = "management")]
+#[cfg(feature = "management_core")]
 mod management;
 
 use env_logger::Env;
@@ -93,10 +93,10 @@ fn spawn_periodic_sync(cc: Arc<ConfigCenter>) {
     });
 }
 
-#[cfg(feature = "management")]
+#[cfg(feature = "management_core")]
 fn spawn_management(cc: Arc<ConfigCenter>) {
     tokio::spawn(async move {
-        #[cfg(feature = "grpc")]
+        #[cfg(feature = "grpc_management")]
         {
             use management::serve_grpc;
             let grpc_addr = cc.config().await.admin.parse().unwrap();
@@ -104,7 +104,7 @@ fn spawn_management(cc: Arc<ConfigCenter>) {
                 error!("Management gRPC error: {e:?}");
             }
         }
-        #[cfg(feature = "http")]
+        #[cfg(feature = "http_management")]
         {
             use management::serve_http;
             let http_addr = cc.config().await.admin.parse().unwrap();
