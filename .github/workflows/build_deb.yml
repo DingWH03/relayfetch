@@ -55,6 +55,11 @@ jobs:
         rustup target add $TARGET
         echo "TARGET=$TARGET" >> $GITHUB_ENV
 
+    - name: Install protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        version: "33.1"
+
     - name: Build Rust project
       run: |
         cargo build --release --target $TARGET
